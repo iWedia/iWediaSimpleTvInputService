@@ -1,0 +1,24 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape>
+            <gradient
+                android:angle="270"
+                android:centerColor="@color/fastlane_background"
+                android:centerY="1.0"
+                android:endColor="@color/fastlane_background"
+                android:startColor="@color/fastlane_background"/>
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape>
+                <gradient
+                    android:angle="270"
+                    android:centerColor="@color/fastlane_background_dark"
+                    android:centerY="1.0"
+                    android:endColor="@color/fastlane_background_dark"
+                    android:startColor="@color/fastlane_background_dark"/>
+            </shape>
+        </clip>
+    </item>
+</layer-list>

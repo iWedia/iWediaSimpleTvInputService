@@ -1,0 +1,18 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 22
+    buildToolsVersion "23.0.2"
+
+    defaultConfig {
+        applicationId "com.iwedia.example.tvinput"
+        minSdkVersion 22
+        targetSdkVersion 22
+        versionCode 1
+        versionName "1.1"
+    }
+}
+
+dependencies {
+    compile group: 'com.iwedia.dtv', name: 'android4tv-framework', version: '0.0.3'
+}
