@@ -47,7 +47,13 @@ public class RatingInfo {
         String[] args = {
                 time, time
         };
-        Cursor cursor = context.getContentResolver().query(uri, null, selection, args, null);
+        Cursor cursor = null;
+        //Sometimes TIF service will throw exception when trying to use selection on programs table
+        try {
+            cursor = context.getContentResolver().query(uri, null, selection, args, null);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         long eventEndTime = 0;
         String eventRating = null;
         mLog.d("CRR - id=" + channel.getChannelId());

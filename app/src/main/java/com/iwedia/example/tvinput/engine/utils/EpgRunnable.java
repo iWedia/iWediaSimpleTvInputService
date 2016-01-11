@@ -165,6 +165,10 @@ public abstract class EpgRunnable implements Runnable {
             mLog.e("[makeProgramContentValues][channel not found]");
             return null;
         }
+        if (event == null) {
+            mLog.e("[makeProgramContentValues][event is null]");
+            return null;
+        }
         startTimeMilis = event.getStartTime().getCalendar().getTimeInMillis();
         endTimeMilis = event.getEndTime().getCalendar().getTimeInMillis();
         dirationMilis = endTimeMilis - startTimeMilis;
