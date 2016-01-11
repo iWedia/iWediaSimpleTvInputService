@@ -18,6 +18,7 @@ import android.graphics.PixelFormat;
 import android.media.tv.TvInputManager;
 import android.media.tv.TvInputService;
 import android.os.RemoteException;
+import android.os.Handler;
 import android.view.WindowManager;
 
 import com.iwedia.dtv.service.IServiceCallback;
@@ -32,7 +33,7 @@ import java.util.Hashtable;
  * Main class for iWedia TV Input Service
  */
 public class TvService extends TvInputService implements
-        ITvSession {
+        ITvSession, IServiceCallback {
 
     /** App name is used to help with logcat output filtering */
     public static final String APP_NAME = "iWediaTvInput_";
@@ -44,43 +45,18 @@ public class TvService extends TvInputService implements
     /** List of all TVSessions */
     private Hashtable<String, TvSession> mSessionTable;
     private TvSession mCurrentSession = null;
-    private IServiceCallback mServiceCallback = new IServiceCallback() {
 
-        @Override
-        public void channelChangeStatus(int routeId, boolean channelChanged) {
-            mLog.d("[channelChangeStatus]");
-            if (mCurrentSession != null) {
-                mCurrentSession.updateTracks();
-            }
-        }
+    private BroadcastReceiver mContentRatingReceiver = null;
 
-        @Override
-        public void safeToUnblank(int routeId) {
-            mLog.d("[safeToUnblank]");
-        }
+    @Override
+    public void onCreate() {
+        mLog.d("[onCreateService]");
 
-        @Override
-        public void serviceScrambledStatus(int routeId, boolean serviceScrambled) {
-            mLog.d("[serviceScrambledStatus]");
-        }
+        super.onCreate();
 
-        @Override
-        public void serviceStopped(int routeId, boolean serviceStopped) {
-            mLog.d("[serviceStopped]");
-        }
+        mSessionTable = new Hashtable<String, TvSession>();
 
-        @Override
-        public void signalStatus(int routeId, boolean signalAvailable) {
-            mLog.d("[signalStatus]");
-        }
-
-        @Override
-        public void updateServiceList(ServiceListUpdateData serviceListUpdateData) {
-            mLog.d("[updateServiceList][service list update date: "
-                    + serviceListUpdateData + "]");
-        }
-    };
-    private BroadcastReceiver mContentRatingReceiver = new BroadcastReceiver() {
+        mContentRatingReceiver = new BroadcastReceiver() {
 
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -98,34 +74,35 @@ public class TvService extends TvInputService implements
         }
     };
 
-    @Override
-    public void onCreate() {
-        mLog.d("[onCreateService]");
-        super.onCreate();
-        mSessionTable = new Hashtable<String, TvSession>();
-        try {
-            DtvManager.instantiate(this);
-        } catch (RemoteException e) {
-            e.printStackTrace();
-        }
-        mDtvManager = DtvManager.getInstance();
-        if (mDtvManager == null) {
-            mLog.e("DVBManager is null!");
-        }
-        mDtvManager.getDtvManager().getServiceControl().registerCallback(mServiceCallback);
         IntentFilter filter = new IntentFilter();
         filter.addAction(TvInputManager.ACTION_BLOCKED_RATINGS_CHANGED);
         filter.addAction(TvInputManager.ACTION_PARENTAL_CONTROLS_ENABLED_CHANGED);
         registerReceiver(mContentRatingReceiver, filter);
+
+        Thread mwInitThread = new Thread() {
+            @Override
+            public void run() {
+                super.run();
+                // ! blocking call
+                DtvManager.instantiate(TvService.this);
+                mDtvManager = DtvManager.getInstance();
+                mDtvManager.getDtvManager().getServiceControl().registerCallback(TvService.this);
+            }
+        };
+        mwInitThread.start();
     }
 
     @Override
     public void onDestroy() {
         mLog.d("[onDestroyService]");
         super.onDestroy();
-        mDtvManager.getDtvManager().getServiceControl().unregisterCallback(mServiceCallback);
+
+        mDtvManager.getDtvManager().getServiceControl().unregisterCallback(this);
         mDtvManager.deinit();
-        unregisterReceiver(mContentRatingReceiver);
+
+        if (mContentRatingReceiver != null) {
+            unregisterReceiver(mContentRatingReceiver);
+        }
     }
 
     @Override
@@ -174,5 +151,39 @@ public class TvService extends TvInputService implements
                     PixelFormat.OPAQUE);
             manager.addView(mCurrentSession.onCreateOverlayView(), params);
         }
+    }
+
+    @Override
+    public void channelChangeStatus(int routeId, boolean channelChanged) {
+        mLog.d("[channelChangeStatus]");
+        if (mCurrentSession != null) {
+            mCurrentSession.updateTracks();
+        }
+    }
+
+    @Override
+    public void safeToUnblank(int routeId) {
+        mLog.d("[safeToUnblank]");
+    }
+
+    @Override
+    public void serviceScrambledStatus(int routeId, boolean serviceScrambled) {
+        mLog.d("[serviceScrambledStatus]");
+    }
+
+    @Override
+    public void serviceStopped(int routeId, boolean serviceStopped) {
+        mLog.d("[serviceStopped]");
+    }
+
+    @Override
+    public void signalStatus(int routeId, boolean signalAvailable) {
+        mLog.d("[signalStatus]");
+    }
+
+    @Override
+    public void updateServiceList(ServiceListUpdateData serviceListUpdateData) {
+        mLog.d("[updateServiceList][service list update date: "
+                + serviceListUpdateData + "]");
     }
 }

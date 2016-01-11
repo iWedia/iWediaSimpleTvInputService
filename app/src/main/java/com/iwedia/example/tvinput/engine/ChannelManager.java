@@ -19,6 +19,9 @@ import android.media.tv.TvContract.Channels;
 import android.net.Uri;
 
 import com.iwedia.dtv.dtvmanager.IDTVManager;
+import com.iwedia.dtv.route.broadcast.IBroadcastRouteControl;
+import com.iwedia.dtv.route.broadcast.RouteFrontendType;
+import com.iwedia.dtv.route.broadcast.RouteInstallSettings;
 import com.iwedia.dtv.scan.FecType;
 import com.iwedia.dtv.scan.IScanControl;
 import com.iwedia.dtv.scan.Modulation;
@@ -31,6 +34,7 @@ import com.iwedia.dtv.types.InternalException;
 import com.iwedia.example.tvinput.TvService;
 import com.iwedia.example.tvinput.data.ChannelDescriptor;
 import com.iwedia.example.tvinput.utils.ChannelUtils;
+import com.iwedia.example.tvinput.utils.ExampleSwitches;
 import com.iwedia.example.tvinput.utils.Logger;
 
 import java.util.ArrayList;
@@ -79,6 +83,8 @@ public class ChannelManager {
     private RouteManager mRouteManager;
     private IScanControl mScanControl;
 
+    private IBroadcastRouteControl mBroadcastRouteControl;
+
     /**
      * Constructor
      *
@@ -88,6 +94,7 @@ public class ChannelManager {
         mContext = context;
         mDvbManager = dvbManager;
         mDTVManger = mDvbManager.getDtvManager();
+        mBroadcastRouteControl = mDTVManger.getBroadcastRouteControl();
         mRouteManager = mDvbManager.getRouteManager();
         mScanControl = mDvbManager.getDtvManager().getScanControl();
         mInputId = TvContract.buildInputId(new ComponentName(mContext,
@@ -101,8 +108,10 @@ public class ChannelManager {
     public void init() {
         mLog.v("initialize ChannelManager");
         mAllChannels = loadChannels(mInputId);
-        ChannelUtils.initIpChannels(mContext);
-        ChannelUtils.readIpChannels(mContext, mIpOnlyChannels);
+        if (ExampleSwitches.ENABLE_DEFAULT_HLS_CHANNELS) {
+            ChannelUtils.initIpChannels(mContext);
+            ChannelUtils.readIpChannels(mContext, mIpOnlyChannels);
+        }
         if (mAllChannels.isEmpty()) {
             mLog.i("[initialize][first time initialization]");
             refreshChannelList();
@@ -229,8 +238,16 @@ public class ChannelManager {
             }
             ServiceDescriptor servDesc = serviceControl.getServiceDescriptor(
                     DtvManager.MASTER_LIST_INDEX, properIndex);
-            formattedChannelNumber = String.format(Locale.ENGLISH, "%02d",
-                    displayNumber);
+            if(ExampleSwitches.ENABLE_IWEDIA_EMU){
+                // Accept only video channels
+                switch(servDesc.getServiceType()){
+                    case DIG_RAD:
+                    case ADV_CODEC_DIG_RAD:
+                        continue;
+                    default:                    
+                }
+            }
+            formattedChannelNumber = String.format(Locale.ENGLISH, "%02d", displayNumber);
             channels.add(new ChannelDescriptor(formattedChannelNumber, servDesc
                     .getName(), servDesc.getMasterIndex(), type, servDesc.getServiceType()));
             displayNumber++;
@@ -271,6 +288,10 @@ public class ChannelManager {
             mScanControl.autoScan(mDvbManager.getRouteManager().getInstallRouteCab());
             mRouteManager.updateCurrentInstallRoute(mRouteManager.getInstallRouteCab());
         } else if (mRouteManager.getInstallRouteTer() != ChannelManager.EC_ID_NOT_FOUND) {
+            RouteInstallSettings settings = new RouteInstallSettings();
+            settings.setFrontendType(RouteFrontendType.TER);
+            mBroadcastRouteControl.configureInstallRoute(mDvbManager.getRouteManager()
+                    .getInstallRouteTer(), settings);
             mScanControl.autoScan(mDvbManager.getRouteManager().getInstallRouteTer());
             mRouteManager.updateCurrentInstallRoute(mRouteManager.getInstallRouteTer());
         } else if (mRouteManager.getInstallRouteSat() != ChannelManager.EC_ID_NOT_FOUND) {

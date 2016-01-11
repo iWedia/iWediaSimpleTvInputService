@@ -17,4 +17,8 @@ public class ExampleSwitches {
      * default. This is just for example.
      */
     public static final boolean ENABLE_SCALE_FEATURE = false;
+    
+    public static final boolean ENABLE_IWEDIA_EMU = true;
+    
+    public static final boolean ENABLE_DEFAULT_HLS_CHANNELS = false;
 }

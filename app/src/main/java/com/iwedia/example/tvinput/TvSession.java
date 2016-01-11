@@ -12,7 +12,9 @@ package com.iwedia.example.tvinput;
 
 import android.content.ContentUris;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.PixelFormat;
+import android.media.MediaPlayer;
 import android.media.tv.TvContentRating;
 import android.media.tv.TvInputManager;
 import android.media.tv.TvInputService;
@@ -37,16 +39,18 @@ import com.iwedia.dtv.subtitle.SubtitleTrack;
 import com.iwedia.dtv.types.InternalException;
 import com.iwedia.example.tvinput.data.ChannelDescriptor;
 import com.iwedia.example.tvinput.data.RatingInfo;
+import com.iwedia.example.tvinput.emu.EmulatorEngine;
 import com.iwedia.example.tvinput.engine.AudioManager;
 import com.iwedia.example.tvinput.engine.ChannelManager;
 import com.iwedia.example.tvinput.engine.DtvManager;
 import com.iwedia.example.tvinput.engine.SubtitleManager;
 import com.iwedia.example.tvinput.utils.Logger;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-class TvSession extends TvInputService.Session {
+public class TvSession extends TvInputService.Session {
 
     /** Object used to write to logcat output */
     private final Logger mLog = new Logger(TvService.APP_NAME
@@ -76,14 +80,23 @@ class TvSession extends TvInputService.Session {
     /** Android TIF manager */
     private TvInputManager mTvManager;
     /** Video playback surface returned by TIF */
-    private Surface mVideoSurface = null;
+    public static Surface mVideoSurface = null;
+
+    public static Object mVideoSurfaceLocker = new Object();
+
     /** Overview layout omposition */
     private ViewGroup mOverlayView = null;
     /** SurfaceView for rendering subtitles, ovned by overlay view */
     private SurfaceView mSubtitleSurfaceView = null;
+
+    private Surface mSubtitleSurface = null;
+
     private ImageView mImageViewRadio;
     /** Is current content block by parental control */
     private boolean mContentIsBlocked = false;
+
+    public static EmulatorEngine mEmulatorEngine;
+
     private static final int MSG_UPDATE_RATING = 1;
     private Handler mHandler = new Handler() {
 
@@ -123,6 +136,7 @@ class TvSession extends TvInputService.Session {
         mChannelManager = mDtvManager.getChannelManager();
         mSubtitleManager = mDtvManager.getSubtitleManager();
         mAudioManager = mDtvManager.getAudioManager();
+        mEmulatorEngine = new EmulatorEngine(context);
     }
 
     @Override
@@ -138,7 +152,9 @@ class TvSession extends TvInputService.Session {
     @Override
     public boolean onSetSurface(Surface surface) {
         mLog.d("[onSetSurface][" + surface + "]");
-        mVideoSurface = surface;
+        synchronized (mVideoSurfaceLocker) {
+            mVideoSurface = surface;
+        }
         return true;
     }
 
@@ -171,6 +187,7 @@ class TvSession extends TvInputService.Session {
             public void surfaceCreated(SurfaceHolder holder) {
                 mLog.d("[onCreateOverlayView][surfaceCreated]");
                 SurfaceBundle bundle = new SurfaceBundle(holder.getSurface());
+                mSubtitleSurface = holder.getSurface();
                 try {
                     mDtvManager.getDtvManager().getDisplayControl().setVideoLayerSurface(0, bundle);
                 } catch (IllegalArgumentException e) {
@@ -208,8 +225,10 @@ class TvSession extends TvInputService.Session {
     @Override
     public boolean onTune(Uri channelUri) {
         mLog.d("[onTune][uri: " + channelUri + "]");
-        // reset audio and subtitle tracks
+        // 1) reset audio and subtitle tracks
         resetTracks();
+
+        // 2) get channel
         long id = ContentUris.parseId(channelUri);
         mCurrentChannel = mChannelManager.getChannelById(id);
         if (mCurrentChannel == null) {
@@ -217,7 +236,8 @@ class TvSession extends TvInputService.Session {
             mContentIsBlocked = false;
             return false;
         }
-        // check parental and start playback
+
+        // 3) check parental and start playback
         checkContentRating();
         return true;
     }
