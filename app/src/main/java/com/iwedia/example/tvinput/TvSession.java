@@ -375,8 +375,10 @@ public class TvSession extends TvInputService.Session {
             }
             mLog.d("[startPlayback] mImageViewRadio SHOW: " + (mCurrentChannel.getServiceType() ==
                     ServiceType.DIG_RAD));
-            mImageViewRadio.setVisibility(mCurrentChannel.getServiceType() == ServiceType
-                    .DIG_RAD ? View.VISIBLE : View.GONE);
+            if (mImageViewRadio != null) {
+                mImageViewRadio.setVisibility(mCurrentChannel.getServiceType() == ServiceType
+                        .DIG_RAD ? View.VISIBLE : View.GONE);
+            }
             notifyVideoAvailable();
         }
     }
