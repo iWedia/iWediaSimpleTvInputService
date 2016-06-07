@@ -36,21 +36,29 @@ import com.iwedia.example.tvinput.utils.Logger;
 public class SetupActivity extends Activity implements IScanCallback {
 
     /** Object used to write to logcat output */
-    private final Logger mLog = new Logger(TvService.APP_NAME
-            + SetupActivity.class.getSimpleName(), Logger.ERROR);
-    private static final int ON_NEW_CHANNEL_FOUND = 0;
-    private static final int ON_SCAN_COMPLETED = 1;
+    private final Logger mLog = new Logger(
+            TvService.APP_NAME + SetupActivity.class.getSimpleName(), Logger.ERROR);
+
+    private static final int ON_INIT_TEXT = 0;
+
+    private static final int ON_NEW_CHANNEL_FOUND = 1;
+
+    private static final int ON_SCAN_START = 2;
+
+    private static final int ON_SCAN_COMPLETED = 3;
 
     private enum ScanState {
         IDLE, SCANNING
     }
 
-    ;
-    private ScanState mScanState;
+    private static ScanState mScanState;
+
     private TextView mSubtitle;
     private ProgressBar mProgressBar;
     private Button mScanAction;
-    private DtvManager mDtvManager;
+
+    private static DtvManager mDtvManager = null;
+
     private RouteManager mRouteManager;
     private String mSubtitleText;
     private int mChannelCounter;
@@ -66,39 +74,16 @@ public class SetupActivity extends Activity implements IScanCallback {
         mSubtitle = (TextView) findViewById(R.id.subtitle);
         mProgressBar = (ProgressBar) findViewById(R.id.progressBar);
         mScanAction = (Button) findViewById(R.id.scan_action);
-        mDtvManager = DtvManager.getInstance();
-        if (mDtvManager == null) {
-            try {
-                DtvManager.instantiate(this);
-            } catch (RemoteException e) {
-                e.printStackTrace();
-            }
-            mDtvManager = DtvManager.getInstance();
-        }
-        mRouteManager = mDtvManager.getRouteManager();
-        mDtvManager.getDtvManager().getScanControl().registerCallback(this);
-        mSubtitleText = mSubtitle.getText().toString();
-        if (mDtvManager.getRouteManager().getInstallRouteCab() != RouteManager.EC_INVALID_ROUTE) {
-            mSubtitleText += "\n" + "cable";
-        }
-        if (mDtvManager.getRouteManager().getInstallRouteTer() != RouteManager.EC_INVALID_ROUTE) {
-            mSubtitleText += "\n" + "terrestrial";
-        }
-        if (mDtvManager.getRouteManager().getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
-            mSubtitleText += "\n" + "satellite";
-        }
-        if (mDtvManager.getRouteManager().getInstallRouteIp() != RouteManager.EC_INVALID_ROUTE) {
-            mSubtitleText += "\n" + "IP";
-        }
-        mSubtitle.setText(mSubtitleText);
-        mScanState = ScanState.IDLE;
-        setResult(Activity.RESULT_OK);
-        mLocker = new Object();
+
         mHandler = new Handler() {
 
             @Override
             public void handleMessage(Message msg) {
                 switch (msg.what) {
+                    case ON_INIT_TEXT:
+                        mSubtitleText = (String) msg.obj;
+                        mSubtitle.setText(mSubtitleText);
+                        break;
                     case ON_NEW_CHANNEL_FOUND:
                         synchronized (mLocker) {
                             mChannelCounter++;
@@ -107,8 +92,14 @@ public class SetupActivity extends Activity implements IScanCallback {
                             mSubtitle.setText(temp);
                         }
                         break;
+                    case ON_SCAN_START:
+                        mScanAction.setText(R.string.tif_setup_stop);
+                        mProgressBar.setMax(100);
+                        mProgressBar.setVisibility(View.VISIBLE);
+                        mSubtitleText += "\n" + "scan started";
+                        mSubtitle.setText(mSubtitleText);
+                        break;
                     case ON_SCAN_COMPLETED:
-                        mScanState = ScanState.IDLE;
                         mScanAction.setText(R.string.tif_setup_start);
                         mProgressBar.setVisibility(View.INVISIBLE);
                         // scan completed
@@ -119,28 +110,66 @@ public class SetupActivity extends Activity implements IScanCallback {
                 }
             }
         };
+
+        Thread mwInitThread = new Thread() {
+            @Override
+            public void run() {
+                super.run();
+                // ! blocking call
+                DtvManager.instantiate(SetupActivity.this);
+                mDtvManager = DtvManager.getInstance();
+
+                mRouteManager = mDtvManager.getRouteManager();
+                mDtvManager.getDtvManager().getScanControl().registerCallback(SetupActivity.this);
+
+                String subtitleText = mSubtitle.getText().toString();
+                if (mDtvManager.getRouteManager().getInstallRouteCab() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "cable";
+                }
+                if (mDtvManager.getRouteManager().getInstallRouteTer() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "terrestrial";
+                }
+                if (mDtvManager.getRouteManager().getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "satellite";
+                }
+                if (mDtvManager.getRouteManager().getInstallRouteIp() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "IP";
+                }
+                Message msg = new Message();
+                msg.what = ON_INIT_TEXT;
+                msg.obj = subtitleText;
+                mHandler.sendMessage(msg);
+            }
+        };
+        mwInitThread.start();
+
+        mScanState = ScanState.IDLE;
+
+        mLocker = new Object();
+
+        setResult(Activity.RESULT_OK);
     }
 
     public void onDestroy() {
         super.onDestroy();
-        mDtvManager.getDtvManager().getScanControl().unregisterCallback(this);
+        if (mDtvManager != null && mDtvManager.getDtvManager() != null) {
+            mDtvManager.getDtvManager().getScanControl().unregisterCallback(this);
+        }
     }
 
     public void onClickScanAction(View view) {
+        mLog.d("[onClickScanAction][" + mScanState + "][" + (view == null) + "]");
         switch (mScanState) {
             case IDLE:
-                mScanAction.setText(R.string.tif_setup_stop);
-                mProgressBar.setMax(100);
+                mHandler.sendEmptyMessage(ON_SCAN_START);
                 mChannelCounter = 0;
-                mProgressBar.setVisibility(View.VISIBLE);
+
                 try {
                     mDtvManager.getChannelManager().startScan();
                 } catch (InternalException e) {
                     e.printStackTrace();
                 }
                 mScanState = ScanState.SCANNING;
-                mSubtitleText += "\n" + "scan started";
-                mSubtitle.setText(mSubtitleText);
                 break;
             case SCANNING:
                 if (view == null) {
@@ -157,6 +186,7 @@ public class SetupActivity extends Activity implements IScanCallback {
                     mSubtitleText += "\n" + "scan aborted";
                     mSubtitle.setText(mSubtitleText);
                 }
+                mScanState = ScanState.IDLE;
                 break;
         }
     }

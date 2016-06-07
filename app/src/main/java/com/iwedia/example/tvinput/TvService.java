@@ -8,6 +8,7 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput;
 
 import android.content.BroadcastReceiver;
@@ -23,6 +24,7 @@ import android.view.WindowManager;
 import com.iwedia.dtv.service.IServiceCallback;
 import com.iwedia.dtv.service.ServiceListUpdateData;
 import com.iwedia.example.tvinput.TvSession.ITvSession;
+import com.iwedia.example.tvinput.a4tval.AlServiceCallback;
 import com.iwedia.example.tvinput.engine.DtvManager;
 import com.iwedia.example.tvinput.utils.Logger;
 
@@ -31,55 +33,20 @@ import java.util.Hashtable;
 /**
  * Main class for iWedia TV Input Service
  */
-public class TvService extends TvInputService implements
-        ITvSession {
+public class TvService extends TvInputService implements ITvSession {
 
     /** App name is used to help with logcat output filtering */
     public static final String APP_NAME = "iWediaTvInput_";
     /** Object used to write to logcat output */
-    private final Logger mLog = new Logger(APP_NAME + TvService.class.getSimpleName(),
-            Logger.ERROR);
+    private final Logger mLog = new Logger(APP_NAME + TvService.class.getSimpleName(), Logger.ERROR);
     /** DVB manager instance. */
     protected DtvManager mDtvManager = null;
     /** List of all TVSessions */
     private Hashtable<String, TvSession> mSessionTable;
     private TvSession mCurrentSession = null;
-    private IServiceCallback mServiceCallback = new IServiceCallback() {
+    private IServiceCallback mServiceCallback;
+    private AlServiceCallback mAlServiceCallback;
 
-        @Override
-        public void channelChangeStatus(int routeId, boolean channelChanged) {
-            mLog.d("[channelChangeStatus]");
-            if (mCurrentSession != null) {
-                mCurrentSession.updateTracks();
-            }
-        }
-
-        @Override
-        public void safeToUnblank(int routeId) {
-            mLog.d("[safeToUnblank]");
-        }
-
-        @Override
-        public void serviceScrambledStatus(int routeId, boolean serviceScrambled) {
-            mLog.d("[serviceScrambledStatus]");
-        }
-
-        @Override
-        public void serviceStopped(int routeId, boolean serviceStopped) {
-            mLog.d("[serviceStopped]");
-        }
-
-        @Override
-        public void signalStatus(int routeId, boolean signalAvailable) {
-            mLog.d("[signalStatus]");
-        }
-
-        @Override
-        public void updateServiceList(ServiceListUpdateData serviceListUpdateData) {
-            mLog.d("[updateServiceList][service list update date: "
-                    + serviceListUpdateData + "]");
-        }
-    };
     private BroadcastReceiver mContentRatingReceiver = new BroadcastReceiver() {
 
         @Override
@@ -88,8 +55,7 @@ public class TvService extends TvInputService implements
             if (mCurrentSession == null) {
                 return;
             }
-            if (intent.getAction().equals(
-                    TvInputManager.ACTION_BLOCKED_RATINGS_CHANGED)) {
+            if (intent.getAction().equals(TvInputManager.ACTION_BLOCKED_RATINGS_CHANGED)) {
                 mCurrentSession.checkContentRating();
             } else if (intent.getAction().equals(
                     TvInputManager.ACTION_PARENTAL_CONTROLS_ENABLED_CHANGED)) {
@@ -103,20 +69,23 @@ public class TvService extends TvInputService implements
         mLog.d("[onCreateService]");
         super.onCreate();
         mSessionTable = new Hashtable<String, TvSession>();
-        try {
-            DtvManager.instantiate(this);
-        } catch (RemoteException e) {
-            e.printStackTrace();
-        }
-        mDtvManager = DtvManager.getInstance();
-        if (mDtvManager == null) {
-            mLog.e("DVBManager is null!");
-        }
-        mDtvManager.getDtvManager().getServiceControl().registerCallback(mServiceCallback);
+        
         IntentFilter filter = new IntentFilter();
         filter.addAction(TvInputManager.ACTION_BLOCKED_RATINGS_CHANGED);
         filter.addAction(TvInputManager.ACTION_PARENTAL_CONTROLS_ENABLED_CHANGED);
         registerReceiver(mContentRatingReceiver, filter);
+
+        Thread mwInitThread = new Thread() {
+            @Override
+            public void run() {
+                super.run();
+                // ! blocking call
+                DtvManager.instantiate(TvService.this);
+                mDtvManager = DtvManager.getIn  stance();
+                
+            }
+        };
+        mwInitThread.start();
     }
 
     @Override
@@ -137,6 +106,13 @@ public class TvService extends TvInputService implements
             createOverlay(true);
             mSessionTable.put(inputId, mCurrentSession);
         }
+        
+        
+        // removeeee
+        
+        mAlServiceCallback = new AlServiceCallback(mCurrentSession);
+        mServiceCallback = mAlServiceCallback.getServiceCallback();
+        //mDtvManager.getAlServiceControl().registerCallback(mServiceCallback);
         return mCurrentSession;
     }
 
@@ -156,13 +132,16 @@ public class TvService extends TvInputService implements
 
     private void createOverlay(boolean tifOverlay) {
         if (tifOverlay) {
-            // FIXME: When we inflate a SurfaceView through TvSession#onCreateOverlayView method
+            // FIXME: When we inflate a SurfaceView through
+            // TvSession#onCreateOverlayView method
             // it is never creating a holding Surface object!
-            // A temporary solution for rendering subtitles is to inflate overlay layout to
+            // A temporary solution for rendering subtitles is to inflate
+            // overlay layout to
             // system alert window (code in else block).
             mCurrentSession.setOverlayViewEnabled(true);
         } else {
-            // TODO: This is a temporary solution to render subtitles and should be removed!
+            // TODO: This is a temporary solution to render subtitles and should
+            // be removed!
             // Subtitles are rendered above all other UI elements.
             WindowManager manager = (WindowManager) getSystemService(WINDOW_SERVICE);
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
@@ -170,8 +149,7 @@ public class TvService extends TvInputService implements
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                            | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                    PixelFormat.OPAQUE);
+                            | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.OPAQUE);
             manager.addView(mCurrentSession.onCreateOverlayView(), params);
         }
     }
