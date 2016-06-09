@@ -8,13 +8,20 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput.utils;
 
 public class ExampleSwitches {
 
     /**
-     * Set this variable to true to enable scaling in example. Scaling in middleware is enabled by
-     * default. This is just for example.
+     * Set this variable to true to enable scaling in example. Scaling in
+     * middleware is enabled by default. This is just for example.
      */
     public static final boolean ENABLE_SCALE_FEATURE = false;
+
+    /**
+     * If this is enabled, tune on channel from MW will be completed randomly on
+     * some channel from prefered channel list.
+     */
+    public static final boolean ENABLE_PREFERED_CHANNELS = true;
 }

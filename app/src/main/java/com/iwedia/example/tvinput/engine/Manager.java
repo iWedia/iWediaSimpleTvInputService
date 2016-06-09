@@ -25,6 +25,7 @@ import com.iwedia.dtv.dtvmanager.IDTVManager;
 import com.iwedia.dtv.epg.IEpgControl;
 import com.iwedia.dtv.service.Service;
 import com.iwedia.dtv.service.ServiceDescriptor;
+import com.iwedia.dtv.service.SourceType;
 import com.iwedia.dtv.types.InternalException;
 import com.iwedia.example.tvinput.TvService;
 import com.iwedia.example.tvinput.a4tvbal.AlDIsplayControl;
@@ -41,6 +42,7 @@ import com.iwedia.example.tvinput.utils.Logger;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Random;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -50,7 +52,7 @@ public class Manager {
 
     /** Object used to write to logcat output */
     private static final Logger mLog = new Logger(TvService.APP_NAME
-            + Manager.class.getSimpleName(), Logger.DEBUG);
+            + Manager.class.getSimpleName(), Logger.ERROR);
 
     public enum MwRunningState {
         UNKNOWN, NOT_RUNNING, RUNNING
@@ -59,6 +61,10 @@ public class Manager {
     public static final String MW_STARTED_SYSTEM_PROP = "comedia.run";
     public static final String MW_STARTED_YES = "true";
     public static final String MW_STARTED_NO = "false";
+
+    public static final String PL_MASTER_LIST = "MASTER";
+    public static final String PL_DVB_ONLY_LIST = "DVBList";
+    public static final String PL_UNIFED_CHANNEL_LIST = "UNCHL";
 
     /**
      * CallBack for EPG events.
@@ -73,7 +79,10 @@ public class Manager {
     }
 
     /** Comedia's Master list index */
-    public static final int MASTER_LIST_INDEX = 0;
+    public static int PREDEFINED_CHANNEL_LIST_INDEX;
+
+    // TODO
+    public static int PREDEFINED_MASTER_CHANNEL_LIST_INDEX = 0;
 
     /** DtvManager instance */
     private IDTVManager mDtvManager = null;
@@ -223,6 +232,16 @@ public class Manager {
      * @throws InternalException
      */
     private void initializeDtvFunctionality() throws RemoteException {
+        // ! Get index of predefined channel list
+        for (int listInx = 0; listInx < mDtvManager.getServiceControl().getNumberOfServiceLists(); listInx++) {
+            if (mDtvManager.getServiceControl().getServiceListName(listInx)
+                    .equals(PL_UNIFED_CHANNEL_LIST)) {
+                PREDEFINED_CHANNEL_LIST_INDEX = listInx;
+                break;
+            }
+        }
+
+        // ! Create TIF sub managers objects
         mRouteManager = new RouteManager();
         mSubtitleManager = new SubtitleManager(mDtvManager.getSubtitleControl());
         mAudioManager = new AudioManager(mDtvManager.getAudioControl());
@@ -271,7 +290,12 @@ public class Manager {
             case CAB:
             case TER:
             case SAT:
-                return startDvb(channel);
+                if (ExampleSwitches.ENABLE_PREFERED_CHANNELS) {
+                    return startIp(getRandomPreferedChannel());
+                } else {
+                    // Normal behavior
+                    return startDvb(channel);
+                }
             case IP:
                 return startIp(channel);
             case ANALOG:
@@ -291,7 +315,7 @@ public class Manager {
         }
         mCurrentlyActiveChannel = channel.getServiceId();
         mRouteManager.updateCurrentLiveRoute(route);
-        mDtvManager.getServiceControl().startService(route, MASTER_LIST_INDEX,
+        mDtvManager.getServiceControl().startService(route, PREDEFINED_CHANNEL_LIST_INDEX,
                 mCurrentlyActiveChannel);
         if (ExampleSwitches.ENABLE_SCALE_FEATURE) {
             ((AlDIsplayControl) mDtvManager.getDisplayControl()).scaleWindow(route, 200, 0, 1280,
@@ -305,6 +329,12 @@ public class Manager {
     }
 
     private boolean startIp(ChannelDescriptor channel) throws InternalException {
+        if (ExampleSwitches.ENABLE_PREFERED_CHANNELS) {
+            if (!isPredefinedIpChannel(channel)) {
+                channel = getRandomPreferedChannel();
+            }
+        }
+
         mLog.d("[startIp][" + channel.toString() + "]");
         int route = mRouteManager.getLiveRouteIp();
         if (route == RouteManager.EC_INVALID_ROUTE) {
@@ -313,6 +343,7 @@ public class Manager {
         }
         mRouteManager.updateCurrentLiveRoute(mRouteManager.getLiveRouteIp());
         mDtvManager.getServiceControl().zapURL(mRouteManager.getLiveRouteIp(), channel.getUrl());
+
         if (ExampleSwitches.ENABLE_SCALE_FEATURE) {
             ((AlDIsplayControl) mDtvManager.getDisplayControl()).scaleWindow(route, 0, 200, 640,
                     480);
@@ -331,7 +362,7 @@ public class Manager {
 
     public Long getCurrentTransponder() {
         ServiceDescriptor serviceDescriptor = mDtvManager.getServiceControl().getServiceDescriptor(
-                MASTER_LIST_INDEX, getCurrentServiceIndex());
+                PREDEFINED_CHANNEL_LIST_INDEX, getCurrentServiceIndex());
         return (long) serviceDescriptor.getFrequency();
     }
 
@@ -540,7 +571,6 @@ public class Manager {
 
         @Override
         protected void onPostExecute(String result) {
-            mLog.d("[CheckMiddlewareAsyncTask][onPostExecute][result: " + result + "]");
             if (result.equals(MW_STARTED_YES)) {
                 try {
                     sInstance = new Manager();
@@ -562,5 +592,20 @@ public class Manager {
                 }
             }
         }
+    }
+
+    private boolean isPredefinedIpChannel(ChannelDescriptor right) {
+        for (ChannelDescriptor left : mChannelManager.getPredefinedChannels()) {
+            if (left.getUrl().equals(right.getUrl())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private ChannelDescriptor getRandomPreferedChannel() {
+        Random ran = new Random();
+        int index = ran.nextInt(mChannelManager.getPredefinedChannels().size());
+        return mChannelManager.getPredefinedChannels().get(index);
     }
 }

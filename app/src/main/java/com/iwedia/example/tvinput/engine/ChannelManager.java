@@ -8,6 +8,7 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput.engine;
 
 import android.content.ComponentName;
@@ -62,7 +63,7 @@ public class ChannelManager {
     /**
      * List of IP channels. Key is Channel ID
      */
-    private ArrayList<ChannelDescriptor> mIpOnlyChannels = null;
+    private ArrayList<ChannelDescriptor> mPredefinedChannels = null;
     /**
      * ID of TV Input
      */
@@ -81,7 +82,7 @@ public class ChannelManager {
 
     /**
      * Constructor
-     *
+     * 
      * @param context Application context
      */
     public ChannelManager(Manager dvbManager, Context context) {
@@ -90,9 +91,8 @@ public class ChannelManager {
         mDTVManger = mDvbManager.getDtvManager();
         mRouteManager = mDvbManager.getRouteManager();
         mScanControl = mDvbManager.getDtvManager().getScanControl();
-        mInputId = TvContract.buildInputId(new ComponentName(mContext,
-                TvService.class));
-        mIpOnlyChannels = new ArrayList<ChannelDescriptor>();
+        mInputId = TvContract.buildInputId(new ComponentName(mContext, TvService.class));
+        mPredefinedChannels = new ArrayList<ChannelDescriptor>();
     }
 
     /**
@@ -102,17 +102,17 @@ public class ChannelManager {
         mLog.v("initialize ChannelManager");
         mAllChannels = loadChannels(mInputId);
         ChannelUtils.initIpChannels(mContext);
-        ChannelUtils.readIpChannels(mContext, mIpOnlyChannels);
-        if (mAllChannels.isEmpty()) {
-            mLog.i("[initialize][first time initialization]");
-            refreshChannelList();
-        }
+        ChannelUtils.readIpChannels(mContext, mPredefinedChannels);
+        // if (mAllChannels.isEmpty()) {
+        mLog.i("[initialize][first time initialization]");
+        refreshChannelList();
+        // }
         print(mAllChannels);
     }
 
     /**
      * Gets channel by given uri
-     *
+     * 
      * @param channelUri
      * @param isRetry
      * @return
@@ -140,13 +140,11 @@ public class ChannelManager {
     private ArrayList<ChannelDescriptor> loadChannels(String inputId) {
         ArrayList<ChannelDescriptor> ret = new ArrayList<ChannelDescriptor>();
         final String[] projection = {
-                Channels._ID,
-                Channels.COLUMN_DISPLAY_NAME, Channels.COLUMN_DISPLAY_NUMBER,
+                Channels._ID, Channels.COLUMN_DISPLAY_NAME, Channels.COLUMN_DISPLAY_NUMBER,
                 Channels.COLUMN_SERVICE_ID, Channels.COLUMN_TYPE, Channels.COLUMN_SERVICE_TYPE
         };
         Cursor cursor = mContext.getContentResolver().query(
-                TvContract.buildChannelsUriForInput(mInputId), projection,
-                null, null, null);
+                TvContract.buildChannelsUriForInput(mInputId), projection, null, null, null);
         if (cursor == null) {
             return ret;
         }
@@ -163,27 +161,24 @@ public class ChannelManager {
 
     /**
      * Inserts channels into TvProvider database
-     *
-     * @param context  of a service
-     * @param inputId  this TV input service
+     * 
+     * @param context of a service
+     * @param inputId this TV input service
      * @param channels to be inserted into a TVProvider database
      */
     private void storeChannels(String inputId, List<ChannelDescriptor> channels) {
         final String[] projection = {
-                TvContract.Channels._ID,
-                TvContract.Channels.COLUMN_DISPLAY_NAME,
+                TvContract.Channels._ID, TvContract.Channels.COLUMN_DISPLAY_NAME,
                 TvContract.Channels.COLUMN_DISPLAY_NUMBER,
         };
         Cursor cursor = mContext.getContentResolver().query(
-                TvContract.buildChannelsUriForInput(mInputId), projection,
-                null, null, null);
+                TvContract.buildChannelsUriForInput(mInputId), projection, null, null, null);
         if (cursor == null) {
             mLog.e("[storeChannels][cursor is null");
             return;
         }
         for (ChannelDescriptor channel : channels) {
-            Uri retUri = mContext.getContentResolver().insert(
-                    TvContract.Channels.CONTENT_URI,
+            Uri retUri = mContext.getContentResolver().insert(TvContract.Channels.CONTENT_URI,
                     channel.getContentValues(inputId));
             if (retUri == null) {
                 mLog.e("[storeChannels][error adding channel to the database");
@@ -202,15 +197,14 @@ public class ChannelManager {
         IServiceControl serviceControl = mDTVManger.getServiceControl();
         mAllChannels = new ArrayList<ChannelDescriptor>();
         // 1) Delete all channels from TV provider database
-        mContext.getContentResolver().delete(
-                TvContract.buildChannelsUriForInput(mInputId), null, null);
-        mContext.getContentResolver().delete(TvContract.Programs.CONTENT_URI,
-                null, null);
+        mContext.getContentResolver().delete(TvContract.buildChannelsUriForInput(mInputId), null,
+                null);
+        mContext.getContentResolver().delete(TvContract.Programs.CONTENT_URI, null, null);
         // 2) Add DVB channels founded from scan
-        int channelListSize = getChannelListSize();
-        if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
-            channelListSize -= mIpOnlyChannels.size();
-        }
+        int channelNuumer = getChannelNum();
+        mLog.d("[refreshChannelList][channel number: " + channelNuumer + "]["
+                + Manager.PREDEFINED_CHANNEL_LIST_INDEX + "]");
+
         // ! Limitation: support only 1 DVB route in this example
         SourceType type = SourceType.UNDEFINED;
         if (mRouteManager.getInstallRouteCab() != RouteManager.EC_INVALID_ROUTE) {
@@ -219,28 +213,23 @@ public class ChannelManager {
             type = SourceType.TER;
         } else if (mRouteManager.getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
             type = SourceType.SAT;
+        } else if (mRouteManager.getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
+            type = SourceType.IP;
         }
-        for (int i = 0; i < channelListSize; i++) {
+        for (int channelInx = 0; channelInx < channelNuumer; channelInx++) {
             // ! If there is IP first element in service list (use case with
             // Hybrid tuner) it's a DUMMY channel
-            int properIndex = i;
-            if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
-                properIndex++;
-            }
             ServiceDescriptor servDesc = serviceControl.getServiceDescriptor(
-                    Manager.MASTER_LIST_INDEX, properIndex);
-            formattedChannelNumber = String.format(Locale.ENGLISH, "%02d",
-                    displayNumber);
-            channels.add(new ChannelDescriptor(formattedChannelNumber, servDesc
-                    .getName(), servDesc.getMasterIndex(), type, servDesc.getServiceType()));
+                    Manager.PREDEFINED_CHANNEL_LIST_INDEX, channelInx);
+            formattedChannelNumber = String.format(Locale.ENGLISH, "%02d", displayNumber);
+            channels.add(new ChannelDescriptor(formattedChannelNumber, servDesc.getName(), servDesc
+                    .getMasterIndex(), type, servDesc.getServiceType()));
             displayNumber++;
         }
         // Add IP channels to list
-        for (ChannelDescriptor ipService : mIpOnlyChannels) {
-            formattedChannelNumber = String.format(Locale.ENGLISH, "%02d",
-                    displayNumber);
-            channels.add(new ChannelDescriptor(formattedChannelNumber,
-                    ipService.getUrl()));
+        for (ChannelDescriptor ipService : mPredefinedChannels) {
+            formattedChannelNumber = String.format(Locale.ENGLISH, "%02d", displayNumber);
+            channels.add(new ChannelDescriptor(formattedChannelNumber, ipService.getUrl()));
             displayNumber++;
         }
         print(channels);
@@ -251,11 +240,9 @@ public class ChannelManager {
     }
 
     private void print(HashMap<Long, ChannelDescriptor> channels) {
-        Iterator<Entry<Long, ChannelDescriptor>> it = channels.entrySet()
-                .iterator();
+        Iterator<Entry<Long, ChannelDescriptor>> it = channels.entrySet().iterator();
         while (it.hasNext()) {
-            Map.Entry<Long, ChannelDescriptor> pair = (Entry<Long, ChannelDescriptor>) it
-                    .next();
+            Map.Entry<Long, ChannelDescriptor> pair = (Entry<Long, ChannelDescriptor>) it.next();
             mLog.d(pair.getValue().toString());
         }
     }
@@ -294,24 +281,27 @@ public class ChannelManager {
     /**
      * Get Size of Channel List.
      */
-    public int getChannelListSize() {
-        int serviceCount = mDTVManger.getServiceControl().getServiceListCount(
-                Manager.MASTER_LIST_INDEX);
+    public int getChannelNum() {
+        int channelNum = mDTVManger.getServiceControl().getServiceListCount(
+                Manager.PREDEFINED_CHANNEL_LIST_INDEX);
         if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
-            serviceCount += mIpOnlyChannels.size();
+            // for Dummy channel which is used for MEDIA playback
+            channelNum--;
+        }
+        return channelNum;
+    }
+
+    public int getDtvChannelListSize() {
+        int serviceCount = mDTVManger.getServiceControl().getServiceListCount(
+                Manager.PREDEFINED_MASTER_CHANNEL_LIST_INDEX);
+        if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
             // for Dummy channel which is used for MEDIA playback
             serviceCount--;
         }
         return serviceCount;
     }
 
-    public int getDtvChannelListSize() {
-        int serviceCount = mDTVManger.getServiceControl().getServiceListCount(
-                Manager.MASTER_LIST_INDEX);
-        if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
-            // for Dummy channel which is used for MEDIA playback
-            serviceCount--;
-        }
-        return serviceCount;
+    public ArrayList<ChannelDescriptor> getPredefinedChannels() {
+        return mPredefinedChannels;
     }
 }
