@@ -8,6 +8,7 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput;
 
 import android.content.ContentUris;
@@ -30,61 +31,83 @@ import android.view.ViewGroup;
 import android.view.accessibility.CaptioningManager;
 import android.widget.ImageView;
 
+import com.bytel.dtv.service.ZappingEvent;
 import com.iwedia.dtv.audio.AudioTrack;
 import com.iwedia.dtv.display.SurfaceBundle;
+import com.iwedia.dtv.service.IServiceCallback;
+import com.iwedia.dtv.service.ServiceListUpdateData;
 import com.iwedia.dtv.service.ServiceType;
 import com.iwedia.dtv.subtitle.SubtitleTrack;
 import com.iwedia.dtv.types.InternalException;
+import com.iwedia.example.tvinput.a4tvbal.AlServiceControl;
 import com.iwedia.example.tvinput.data.ChannelDescriptor;
 import com.iwedia.example.tvinput.data.RatingInfo;
 import com.iwedia.example.tvinput.engine.AudioManager;
 import com.iwedia.example.tvinput.engine.ChannelManager;
-import com.iwedia.example.tvinput.engine.DtvManager;
+import com.iwedia.example.tvinput.engine.Manager;
 import com.iwedia.example.tvinput.engine.SubtitleManager;
 import com.iwedia.example.tvinput.utils.Logger;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 
-class TvSession extends TvInputService.Session {
+class TvSession extends TvInputService.Session implements IServiceCallback {
 
     /** Object used to write to logcat output */
-    private final Logger mLog = new Logger(TvService.APP_NAME
-            + TvSession.class.getSimpleName(), Logger.ERROR);
+    private final Logger mLog = new Logger(TvService.APP_NAME + TvSession.class.getSimpleName(),
+            Logger.ERROR);
+
     /** Uri of the currently active channel */
     private ChannelDescriptor mCurrentChannel = null;
+
     /** Stores tracks acquired from Comedia MW */
     private ArrayList<TvTrackInfo> mTracks = new ArrayList<TvTrackInfo>();
+
     /** Stores real Comedia MW tracks indexes */
     private HashMap<String, Integer> mTracksIndices = new HashMap<String, Integer>();
+
     /** Flag that is used to determine weather subtitles are enabled */
     private boolean mIsSubtitleEnabled;
+
     /** DvbManager for accessing MW API */
-    private DtvManager mDtvManager;
+    private Manager mDtvManager;
+
     /** Subtitle track manager */
     private SubtitleManager mSubtitleManager;
+
     /** Audio track manager */
     private AudioManager mAudioManager;
+
     /** Application context */
     private Context mContext;
+
     /** Listener for session events */
     private ITvSession mSessionListener;
+
     /** Channel manager object */
     private ChannelManager mChannelManager;
+
     /** Input ID for TV session */
     private String mInputID;
+
     /** Android TIF manager */
     private TvInputManager mTvManager;
+
     /** Video playback surface returned by TIF */
     private Surface mVideoSurface = null;
+
     /** Overview layout omposition */
     private ViewGroup mOverlayView = null;
+
     /** SurfaceView for rendering subtitles, ovned by overlay view */
     private SurfaceView mSubtitleSurfaceView = null;
     private ImageView mImageViewRadio;
+
     /** Is current content block by parental control */
     private boolean mContentIsBlocked = false;
+
     private static final int MSG_UPDATE_RATING = 1;
+
     private Handler mHandler = new Handler() {
 
         @Override
@@ -107,8 +130,9 @@ class TvSession extends TvInputService.Session {
 
     /**
      * Constructor
-     *
-     * @param sessionListener Listener through which reporting when session onRelease() is called.
+     * 
+     * @param sessionListener Listener through which reporting when session
+     *            onRelease() is called.
      */
     public TvSession(Context context, ITvSession sessionListener, String inputID) {
         super(context);
@@ -119,10 +143,19 @@ class TvSession extends TvInputService.Session {
         mContext = context;
         mIsSubtitleEnabled = ((CaptioningManager) mContext
                 .getSystemService(Context.CAPTIONING_SERVICE)).isEnabled();
-        mDtvManager = DtvManager.getInstance();
+        initTvManagers();
+    }
+
+    private boolean initTvManagers() {
+        mDtvManager = Manager.getInstance();
+        if (mDtvManager == null) {
+            return false;
+        }
         mChannelManager = mDtvManager.getChannelManager();
         mSubtitleManager = mDtvManager.getSubtitleManager();
         mAudioManager = mDtvManager.getAudioManager();
+        ((AlServiceControl) mDtvManager.getDtvManager().getServiceControl()).registerCallback(this);
+        return true;
     }
 
     @Override
@@ -145,8 +178,8 @@ class TvSession extends TvInputService.Session {
     @Override
     public View onCreateOverlayView() {
         mLog.d("[onCreateOverlayView]");
-        LayoutInflater inflater = (LayoutInflater) mContext.getSystemService(
-                Context.LAYOUT_INFLATER_SERVICE);
+        LayoutInflater inflater = (LayoutInflater) mContext
+                .getSystemService(Context.LAYOUT_INFLATER_SERVICE);
         mOverlayView = (ViewGroup) inflater.inflate(R.layout.overlay_view, null);
         mImageViewRadio = (ImageView) mOverlayView.findViewById(R.id.imageViewRadio);
         mSubtitleSurfaceView = (SurfaceView) mOverlayView.findViewById(R.id.subtitleSurfaceView);
@@ -196,12 +229,16 @@ class TvSession extends TvInputService.Session {
         mLog.d("[onSetStreamVolume][volume: " + volume + "]");
         if (volume == 0.0f) {
             try {
-                mDtvManager.setMute();
+                if (mDtvManager != null) {
+                    mDtvManager.setMute();
+                }
             } catch (RemoteException e) {
                 e.printStackTrace();
             }
         } else {
-            mDtvManager.setVolume(volume * 100);
+            if (mDtvManager != null) {
+                mDtvManager.setVolume(volume * 100);
+            }
         }
     }
 
@@ -211,6 +248,12 @@ class TvSession extends TvInputService.Session {
         // reset audio and subtitle tracks
         resetTracks();
         long id = ContentUris.parseId(channelUri);
+        if (mChannelManager == null) {
+            if (!initTvManagers()) {
+                mLog.e("[onTune][managers not created][uri: " + channelUri + "]");
+                return false;
+            }
+        }
         mCurrentChannel = mChannelManager.getChannelById(id);
         if (mCurrentChannel == null) {
             mLog.d("[onTune][channel not fount][uri: " + channelUri + "]");
@@ -236,6 +279,12 @@ class TvSession extends TvInputService.Session {
                 if (!mIsSubtitleEnabled) {
                     return false;
                 }
+                if (mSubtitleManager == null) {
+                    if (!initTvManagers()) {
+                        mLog.e("[onSelectTrack][managers not created]");
+                        return false;
+                    }
+                }
                 try {
                     if (trackId == null) {
                         mSubtitleManager.hideSubtitles();
@@ -248,6 +297,12 @@ class TvSession extends TvInputService.Session {
                 notifyTrackSelected(type, trackId);
                 return true;
             case TvTrackInfo.TYPE_AUDIO:
+                if (mAudioManager == null) {
+                    if (!initTvManagers()) {
+                        mLog.e("[onSelectTrack][managers not created]");
+                        return false;
+                    }
+                }
                 try {
                     mAudioManager.setAudioTrack(mTracksIndices.get(trackId));
                 } catch (Exception e) {
@@ -275,20 +330,24 @@ class TvSession extends TvInputService.Session {
     }
 
     /**
-     * Check parental control content rating for currently selected channel and start playback
-     * if channel is not blocked or stop playback otherwise.
+     * Check parental control content rating for currently selected channel and
+     * start playback if channel is not blocked or stop playback otherwise.
      */
-    void checkContentRating() {
+    public void checkContentRating() {
         final RatingInfo info = RatingInfo.buildRatingInfo(mContext, mCurrentChannel);
         mContentIsBlocked = info != null && info.rating != null
                 && mTvManager.isParentalControlsEnabled()
                 && mTvManager.isRatingBlocked(info.rating);
         if (mContentIsBlocked) {
             notifyContentBlocked(info.rating);
-            stopPlayback();
+            if (!stopPlayback()) {
+                return;
+            }
         } else {
             notifyContentAllowed();
-            startPlayback();
+            if (!startPlayback()) {
+                return;
+            }
         }
         if (info != null) {
             mLog.d("Next rating update: " + info.expires);
@@ -300,23 +359,30 @@ class TvSession extends TvInputService.Session {
     }
 
     /**
-     * Update audio and subtitle tracks information for currently selected channel.
+     * Update audio and subtitle tracks information for currently selected
+     * channel.
      */
-    void updateTracks() {
+    private void updateTracks() {
         String firstAudioTrack = null;
         mTracks.clear();
         mTracksIndices.clear();
+
+        if (mDtvManager == null) {
+            if (!initTvManagers()) {
+                mLog.e("[updateTracks][managers not created]");
+                return;
+            }
+        }
+
         if (mCurrentChannel != null) {
             // Audio tracks
             int audioTrackCount = mAudioManager.getTrackCount();
             for (int trackIndex = 0; trackIndex < audioTrackCount; trackIndex++) {
                 AudioTrack audioTrack = mAudioManager.getTrack(trackIndex);
-                String trackId = mTracks.size()
-                        + "_" + audioTrack.getName()
-                        + "_" + audioTrack.getLanguage();
-                mTracks.add(new TvTrackInfo.Builder(TvTrackInfo.TYPE_AUDIO, trackId)
-                        .setLanguage(audioTrack.getLanguage())
-                        .build());
+                String trackId = mTracks.size() + "_" + audioTrack.getName() + "_"
+                        + audioTrack.getLanguage();
+                mTracks.add(new TvTrackInfo.Builder(TvTrackInfo.TYPE_AUDIO, trackId).setLanguage(
+                        audioTrack.getLanguage()).build());
                 mTracksIndices.put(trackId, audioTrack.getIndex());
                 if (firstAudioTrack == null) {
                     firstAudioTrack = trackId;
@@ -327,12 +393,10 @@ class TvSession extends TvInputService.Session {
             int subtitlesTrackCount = mSubtitleManager.getTrackCount();
             for (int trackIndex = 0; trackIndex < subtitlesTrackCount; trackIndex++) {
                 SubtitleTrack subtitleTrack = mSubtitleManager.getTrack(trackIndex);
-                String trackId = mTracks.size()
-                        + "_" + subtitleTrack.getName()
-                        + "_" + subtitleTrack.getLanguage();
+                String trackId = mTracks.size() + "_" + subtitleTrack.getName() + "_"
+                        + subtitleTrack.getLanguage();
                 mTracks.add(new TvTrackInfo.Builder(TvTrackInfo.TYPE_SUBTITLE, trackId)
-                        .setLanguage(subtitleTrack.getLanguage())
-                        .build());
+                        .setLanguage(subtitleTrack.getLanguage()).build());
                 mTracksIndices.put(trackId, subtitleTrack.getIndex());
                 trackIndex++;
             }
@@ -345,29 +409,44 @@ class TvSession extends TvInputService.Session {
         notifyTrackSelected(TvTrackInfo.TYPE_SUBTITLE, null);
     }
 
-    private void startPlayback() {
+    private boolean startPlayback() {
         if (mCurrentChannel != null) {
             notifyVideoUnavailable(TvInputManager.VIDEO_UNAVAILABLE_REASON_TUNING);
+            if (mDtvManager == null) {
+                if (!initTvManagers()) {
+                    mLog.e("[startPlayback][managers not created]");
+                    return false;
+                }
+            }
             try {
                 mDtvManager.start(mCurrentChannel);
             } catch (InternalException e) {
                 e.printStackTrace();
+                return false;
             }
-            mLog.d("[startPlayback] mImageViewRadio SHOW: " + (mCurrentChannel.getServiceType() ==
-                    ServiceType.DIG_RAD));
+            mLog.d("[startPlayback] mImageViewRadio SHOW: "
+                    + (mCurrentChannel.getServiceType() == ServiceType.DIG_RAD));
             if (mImageViewRadio != null) {
-                mImageViewRadio.setVisibility(mCurrentChannel.getServiceType() == ServiceType
-                        .DIG_RAD ? View.VISIBLE : View.GONE);
+                mImageViewRadio
+                        .setVisibility(mCurrentChannel.getServiceType() == ServiceType.DIG_RAD ? View.VISIBLE
+                                : View.GONE);
             }
             notifyVideoAvailable();
         }
+        return true;
     }
 
-    private void stopPlayback() {
+    private boolean stopPlayback() {
         try {
+            if (mDtvManager == null) {
+                mLog.e("[stopPlayback][managers not created]");
+                return false;
+            }
             mDtvManager.stop();
+            return true;
         } catch (InternalException e) {
             e.printStackTrace();
+            return false;
         }
     }
 
@@ -378,5 +457,41 @@ class TvSession extends TvInputService.Session {
         notifyTrackSelected(TvTrackInfo.TYPE_AUDIO, null);
         notifyTrackSelected(TvTrackInfo.TYPE_VIDEO, null);
         notifyTrackSelected(TvTrackInfo.TYPE_SUBTITLE, null);
+    }
+
+    @Override
+    public void channelChangeStatus(int routeId, boolean channelChanged) {
+        mLog.d("[channelChangeStatus][" + routeId + "][" + channelChanged + "]");
+        updateTracks();
+    }
+
+    @Override
+    public void safeToUnblank(int routeId) {
+        mLog.d("[safeToUnblank][" + routeId + "]");
+    }
+
+    @Override
+    public void serviceScrambledStatus(int routeId, boolean serviceScrambled) {
+        mLog.d("[serviceScrambledStatus][" + routeId + "][" + serviceScrambled + "]");
+    }
+
+    @Override
+    public void serviceStopped(int routeId, boolean serviceStopped) {
+        mLog.d("[serviceStopped][" + routeId + "][" + serviceStopped + "]");
+    }
+
+    @Override
+    public void signalStatus(int routeId, boolean signalAvailable) {
+        mLog.d("[signalStatus][" + routeId + "][" + signalAvailable + "]");
+    }
+
+    @Override
+    public void updateServiceList(ServiceListUpdateData serviceListUpdateData) {
+        mLog.d("[updateServiceList][service list update date: " + serviceListUpdateData + "]");
+    }
+
+    // @Override
+    public void channelZapping(ZappingEvent event, int liveRouteID) {
+        mLog.d("[channelZapping][" + event.toString() + "][" + liveRouteID + "]");
     }
 }

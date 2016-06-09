@@ -8,6 +8,7 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput.ui;
 
 import android.app.Activity;
@@ -21,12 +22,16 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import com.bytel.dtv.scan.SignalAllInfo;
 import com.iwedia.dtv.scan.IScanCallback;
 import com.iwedia.dtv.scan.ScanInstallStatus;
+import com.iwedia.dtv.scan.ScanStatus;
 import com.iwedia.dtv.types.InternalException;
 import com.iwedia.example.tvinput.R;
 import com.iwedia.example.tvinput.TvService;
-import com.iwedia.example.tvinput.engine.DtvManager;
+import com.iwedia.example.tvinput.a4tvbal.AlDtvManager;
+import com.iwedia.example.tvinput.a4tvbal.AlScanControl;
+import com.iwedia.example.tvinput.engine.Manager;
 import com.iwedia.example.tvinput.engine.RouteManager;
 import com.iwedia.example.tvinput.utils.Logger;
 
@@ -47,6 +52,8 @@ public class SetupActivity extends Activity implements IScanCallback {
 
     private static final int ON_SCAN_COMPLETED = 3;
 
+    private static final int ON_PROGRESS_UPDATE = 4;
+
     private enum ScanState {
         IDLE, SCANNING
     }
@@ -57,7 +64,7 @@ public class SetupActivity extends Activity implements IScanCallback {
     private ProgressBar mProgressBar;
     private Button mScanAction;
 
-    private static DtvManager mDtvManager = null;
+    private Manager mDtvManager = null;
 
     private RouteManager mRouteManager;
     private String mSubtitleText;
@@ -68,6 +75,7 @@ public class SetupActivity extends Activity implements IScanCallback {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        mLog.d("[onCreate]");
         setContentView(R.layout.setup_activity);
         Intent intent = new Intent(getApplicationContext(), TvService.class);
         getApplicationContext().startService(intent);
@@ -87,8 +95,8 @@ public class SetupActivity extends Activity implements IScanCallback {
                     case ON_NEW_CHANNEL_FOUND:
                         synchronized (mLocker) {
                             mChannelCounter++;
-                            String temp = mSubtitleText + "\n"
-                                    + "DVB channels found: " + mChannelCounter;
+                            String temp = mSubtitleText + "\n" + "DVB channels found: "
+                                    + mChannelCounter;
                             mSubtitle.setText(temp);
                         }
                         break;
@@ -107,47 +115,19 @@ public class SetupActivity extends Activity implements IScanCallback {
                         mSubtitleText += "\n" + "scan completed";
                         mSubtitle.setText(mSubtitleText);
                         break;
+                    case ON_PROGRESS_UPDATE:
+                        mProgressBar.setProgress(msg.arg1);
+                        break;
                 }
             }
         };
 
-        Thread mwInitThread = new Thread() {
-            @Override
-            public void run() {
-                super.run();
-                // ! blocking call
-                DtvManager.instantiate(SetupActivity.this);
-                mDtvManager = DtvManager.getInstance();
-
-                mRouteManager = mDtvManager.getRouteManager();
-                mDtvManager.getDtvManager().getScanControl().registerCallback(SetupActivity.this);
-
-                String subtitleText = mSubtitle.getText().toString();
-                if (mDtvManager.getRouteManager().getInstallRouteCab() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "cable";
-                }
-                if (mDtvManager.getRouteManager().getInstallRouteTer() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "terrestrial";
-                }
-                if (mDtvManager.getRouteManager().getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "satellite";
-                }
-                if (mDtvManager.getRouteManager().getInstallRouteIp() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "IP";
-                }
-                Message msg = new Message();
-                msg.what = ON_INIT_TEXT;
-                msg.obj = subtitleText;
-                mHandler.sendMessage(msg);
-            }
-        };
-        mwInitThread.start();
+        // ! In same time TvService will be created by system
+        // ! TvService will wait and bind to MW service
 
         mScanState = ScanState.IDLE;
 
         mLocker = new Object();
-
-        setResult(Activity.RESULT_OK);
     }
 
     public void onDestroy() {
@@ -161,6 +141,38 @@ public class SetupActivity extends Activity implements IScanCallback {
         mLog.d("[onClickScanAction][" + mScanState + "][" + (view == null) + "]");
         switch (mScanState) {
             case IDLE:
+                mDtvManager = Manager.getInstance();
+                if (mDtvManager == null) {
+                    mSubtitleText = mSubtitle.getText().toString();
+                    mSubtitleText += "\n" + "MW not ready, try again";
+                    mSubtitle.setText(mSubtitleText);
+                    return;
+                }
+
+                mRouteManager = mDtvManager.getRouteManager();
+                ((AlScanControl) mDtvManager.getDtvManager().getScanControl())
+                        .registerCallback(this);
+
+                String subtitleText = "Available install frontends:";
+                if (mRouteManager.getInstallRouteCab() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "cable";
+                }
+                if (mRouteManager.getInstallRouteTer() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "terrestrial";
+                }
+                if (mRouteManager.getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "satellite";
+                }
+                if (mRouteManager.getInstallRouteIp() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "IP";
+                }
+                mSubtitle.setText(mSubtitleText);
+
+                Message msg = new Message();
+                msg.what = ON_INIT_TEXT;
+                msg.obj = subtitleText;
+                mHandler.sendMessage(msg);
+
                 mHandler.sendEmptyMessage(ON_SCAN_START);
                 mChannelCounter = 0;
 
@@ -187,59 +199,55 @@ public class SetupActivity extends Activity implements IScanCallback {
                     mSubtitle.setText(mSubtitleText);
                 }
                 mScanState = ScanState.IDLE;
-                break;
+
+                // ! Close activity
+                setResult(Activity.RESULT_OK);
+                finish();
         }
     }
 
     @Override
     public void antennaConnected(int routeId, boolean state) {
-        mLog.d("[antennaConnected]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[antennaConnected][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][connected: " + state + "]");
     }
 
     @Override
     public void installServiceDATAName(int routeId, String name) {
-        mLog.d("[installServiceDATAName]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[installServiceDATAName][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][name: " + name + "]");
         mHandler.sendEmptyMessage(ON_NEW_CHANNEL_FOUND);
     }
 
     @Override
     public void installServiceDATANumber(int routeId, int name) {
-        mLog.d("[installServiceDATANumber]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[installServiceDATANumber][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][name: " + name + "]");
     }
 
     @Override
     public void installServiceRADIOName(int routeId, String name) {
-        mLog.d("[installServiceRADIOName]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[installServiceRADIOName][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][name: " + name + "]");
         mHandler.sendEmptyMessage(ON_NEW_CHANNEL_FOUND);
     }
 
     @Override
     public void installServiceRADIONumber(int routeId, int name) {
-        mLog.d("[installServiceRADIONumber]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[installServiceRADIONumber][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][name: " + name + "]");
     }
 
     @Override
     public void installServiceTVName(int routeId, String name) {
-        mLog.d("[installServiceTVName]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[installServiceTVName][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][name: " + name + "]");
         mHandler.sendEmptyMessage(ON_NEW_CHANNEL_FOUND);
     }
 
     @Override
     public void installServiceTVNumber(int routeId, int name) {
-        mLog.d("[installServiceTVNumber]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[installServiceTVNumber][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][name: " + name + "]");
     }
 
@@ -255,68 +263,71 @@ public class SetupActivity extends Activity implements IScanCallback {
 
     @Override
     public void sat2ipServerDropped(int routeId) {
-        mLog.d("[sat2ipServerDropped]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "]");
+        mLog.d("[sat2ipServerDropped][" + mRouteManager.getInstallRouteDescription(routeId) + "]");
     }
 
     @Override
     public void scanFinished(int routeId) {
-        mLog.d("[scanFinished]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "]");
+        mLog.d("[scanFinished][" + mRouteManager.getInstallRouteDescription(routeId) + "]");
         mDtvManager.getChannelManager().refreshChannelList();
         onClickScanAction(null);
         // Send an intent to application that is safe to pull channels from TIF
         // database
-        Intent intent = new Intent(
-                "com.iwedia.tifservice.TIF_CHANNEL_DB_UPDATED");
+        Intent intent = new Intent("com.iwedia.tifservice.TIF_CHANNEL_DB_UPDATED");
         sendBroadcast(intent);
     }
 
     @Override
     public void scanNoServiceSpace(int routeId) {
-        mLog.d("[scanFinished]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "]");
+        mLog.d("[scanFinished][" + mRouteManager.getInstallRouteDescription(routeId) + "]");
     }
 
     @Override
     public void scanProgressChanged(int routeId, int value) {
-        mLog.d("[scanProgressChanged]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[scanProgressChanged][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][progres: " + value + "]");
-        mProgressBar.setProgress(value);
+        Message msg = new Message();
+        msg.what = ON_PROGRESS_UPDATE;
+        msg.arg1 = value;
+        mHandler.sendMessage(msg);
     }
 
     @Override
     public void scanTunFrequency(int routeId, int frequency) {
-        mLog.d("[scanTunFrequency]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[scanTunFrequency][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][frequency: " + frequency + "]");
     }
 
     @Override
     public void signalBer(int routeId, int ber) {
-        mLog.d("[signalBer]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "][ber: "
-                + ber + "]");
+        mLog.d("[signalBer][" + mRouteManager.getInstallRouteDescription(routeId) + "][ber: " + ber
+                + "]");
     }
 
     @Override
     public void signalQuality(int routeId, int quality) {
-        mLog.d("[signalQuality]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[signalQuality][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][quality: " + quality + "]");
     }
 
     @Override
     public void signalStrength(int routeId, int strength) {
-        mLog.d("[signalStrength]["
-                + mRouteManager.getInstallRouteDescription(routeId)
+        mLog.d("[signalStrength][" + mRouteManager.getInstallRouteDescription(routeId)
                 + "][strength: " + strength + "]");
     }
 
     @Override
     public void triggerStatus(int routeId) {
-        mLog.d("[triggerStatus]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "]");
+        mLog.d("[triggerStatus][" + mRouteManager.getInstallRouteDescription(routeId) + "]");
+    }
+
+    // @Override
+    public void signalAllInfo(SignalAllInfo signalAllInfo) {
+        mLog.d("[signalAllInfo][" + signalAllInfo.toString() + "]");
+    }
+
+    // @Override
+    public void scanStatus(int routeID, ScanStatus status) {
+        mLog.d("[scanStatus][" + routeID + "][" + status.getValue() + "]");
     }
 }

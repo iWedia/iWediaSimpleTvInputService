@@ -22,6 +22,6 @@
             translatable="false">Channel Scan iWedia
     </string>
     <string name="subtitle"
-            translatable="false">Available install frontends:
+            translatable="false">
     </string>
 </resources>

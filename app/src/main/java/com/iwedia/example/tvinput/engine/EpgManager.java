@@ -8,6 +8,7 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput.engine;
 
 import android.net.ParseException;
@@ -15,7 +16,6 @@ import android.os.Handler;
 
 import com.iwedia.dtv.epg.EpgEvent;
 import com.iwedia.dtv.epg.EpgEventType;
-import com.iwedia.dtv.epg.EpgMasterList;
 import com.iwedia.dtv.epg.EpgServiceFilter;
 import com.iwedia.dtv.epg.EpgTimeFilter;
 import com.iwedia.dtv.epg.IEpgCallback;
@@ -24,6 +24,8 @@ import com.iwedia.dtv.setup.ISetupControl;
 import com.iwedia.dtv.types.InternalException;
 import com.iwedia.dtv.types.TimeDate;
 import com.iwedia.example.tvinput.TvService;
+import com.iwedia.example.tvinput.a4tvbal.AlDIsplayControl;
+import com.iwedia.example.tvinput.a4tvbal.AlEpgControl;
 import com.iwedia.example.tvinput.data.ChannelDescriptor;
 import com.iwedia.example.tvinput.utils.Logger;
 
@@ -39,13 +41,13 @@ public class EpgManager {
     private IEpgControl mEpgControl = null;
     private ISetupControl mSetupControl = null;
     private int mEpgClientId = -1;
-    private DtvManager mDTVManager = null;
+    private Manager mDTVManager = null;
     private TimeDate mEpgStartTime;
     private TimeDate mEpgEndTime;
     private static final int INITIAL_PREPARE_DELAY = 5000;
     private Handler mHandler = new Handler();
 
-    public EpgManager(DtvManager dtvManager) {
+    public EpgManager(Manager dtvManager) {
         mDTVManager = dtvManager;
         try {
             mEpgControl = dtvManager.getDtvManager().getEpgControl();
@@ -68,8 +70,8 @@ public class EpgManager {
                     masterListIndexes.add(channel.getServiceId());
                 }
             }
-            EpgMasterList epgMasterList = new EpgMasterList(masterListIndexes);
-            mEpgControl.createWindow(epgMasterList, startTimeOfAcquisition, durationInHours);
+            ((AlEpgControl) mDTVManager.getEpgControl()).createWindow(startTimeOfAcquisition,
+                    durationInHours);
         } catch (IllegalArgumentException e) {
             e.printStackTrace();
         } catch (InternalException e) {
@@ -81,12 +83,10 @@ public class EpgManager {
         mLog.d("[prepareGetEpgEvents]");
         TimeDate lCurrentTime = mSetupControl.getTimeDate();
         Calendar lllCalendar = lCurrentTime.getCalendar();
-        mEpgStartTime = new TimeDate(1, 0, 0,
-                lllCalendar.get(Calendar.DAY_OF_MONTH),
+        mEpgStartTime = new TimeDate(1, 0, 0, lllCalendar.get(Calendar.DAY_OF_MONTH),
                 lllCalendar.get(Calendar.MONTH) + 1, lllCalendar.get(Calendar.YEAR));
         lllCalendar.add(Calendar.HOUR, 7 * 24);
-        mEpgEndTime = new TimeDate(59, 59, 23,
-                lllCalendar.get(Calendar.DAY_OF_MONTH),
+        mEpgEndTime = new TimeDate(59, 59, 23, lllCalendar.get(Calendar.DAY_OF_MONTH),
                 lllCalendar.get(Calendar.MONTH) + 1, lllCalendar.get(Calendar.YEAR));
         mLog.d("[createWindow][start]");
         createWindow(mEpgStartTime, 7 * 24);
@@ -95,7 +95,7 @@ public class EpgManager {
 
     /**
      * Registers client callback
-     *
+     * 
      * @param callback
      */
     public void registerCallback(IEpgCallback callback) {
@@ -104,7 +104,7 @@ public class EpgManager {
         } catch (InternalException e) {
             e.printStackTrace();
         }
-        mEpgControl.registerCallback(callback, mEpgClientId);
+        ((AlEpgControl) mDTVManager.getEpgControl()).registerCallback(callback, mEpgClientId);
         mHandler.postDelayed(new Runnable() {
 
             @Override
@@ -115,28 +115,19 @@ public class EpgManager {
     }
 
     public void unregisterCallback(IEpgCallback callback) {
-        try {
-            mEpgControl.stopAcquisition(mEpgClientId);
-        } catch (InternalException e) {
-            e.printStackTrace();
-        }
-        try {
-            mEpgControl.releaseEventList(mEpgClientId);
-        } catch (InternalException e) {
-            e.printStackTrace();
-        }
+        ((AlEpgControl) mDTVManager.getEpgControl()).stopAcquisition(mEpgClientId);
+        ((AlEpgControl) mDTVManager.getEpgControl()).releaseEventList(mEpgClientId);
         mEpgControl.unregisterCallback(callback, mEpgClientId);
     }
 
     /**
      * Returns EPG events for desired service index and desired day.
-     *
+     * 
      * @param indexInMasterList Index of desired service in master list.
      * @return List of EPG events.
      */
     public synchronized ArrayList<EpgEvent> getEpgEvents(int indexInMasterList)
-            throws ParseException,
-            IllegalArgumentException, InternalException {
+            throws ParseException, IllegalArgumentException, InternalException {
         ArrayList<EpgEvent> events = new ArrayList<EpgEvent>();
         if (mEpgStartTime == null || mEpgEndTime == null) {
             return events;
@@ -161,8 +152,7 @@ public class EpgManager {
         lEpgServiceFilter.setServiceIndex(indexInMasterList);
         mEpgControl.setFilter(mEpgClientId, lEpgServiceFilter);
         mEpgControl.startAcquisition(mEpgClientId);
-        lEpgEventsSize = mEpgControl.getAvailableEventsNumber(
-                mEpgClientId, indexInMasterList);
+        lEpgEventsSize = mEpgControl.getAvailableEventsNumber(mEpgClientId, indexInMasterList);
         for (int eventIndex = 0; eventIndex < lEpgEventsSize; eventIndex++) {
             // if(mDTVManager.getScanManager().isScanStarted()){
             // break;
@@ -200,18 +190,18 @@ public class EpgManager {
     }
 
     /**
-     * For various demos, time from stream is not current date so we must set date of every EpgEvent
-     * to be for current date
-     *
-     * @param event           EpgEvent that contains start and end times
-     * @param day             Day of week for which we are fetching EPG data
-     * @param isForDesiredDay If event ends in another day (Guide is fetched for today but EpgEvent
-     *                        ends in tomorrow)
+     * For various demos, time from stream is not current date so we must set
+     * date of every EpgEvent to be for current date
+     * 
+     * @param event EpgEvent that contains start and end times
+     * @param day Day of week for which we are fetching EPG data
+     * @param isForDesiredDay If event ends in another day (Guide is fetched for
+     *            today but EpgEvent ends in tomorrow)
      */
     private void changeEventTimes(EpgEvent event, int day, boolean isForDesiredDay) {
         /**
-         * We must calculate new start time and end time. If transport stream is not live this will
-         * fix its time in EPG events
+         * We must calculate new start time and end time. If transport stream is
+         * not live this will fix its time in EPG events
          */
         boolean changeOnlyEndTime = true;
         Calendar curentTime = Calendar.getInstance();
@@ -221,8 +211,7 @@ public class EpgManager {
         endTime.setTimeInMillis(event.getEndTime().getCalendar().getTimeInMillis());
         if (!isForDesiredDay) {
             // Start time is in one day and end time is in different day
-            if (startTime.get(Calendar.DAY_OF_MONTH) != endTime
-                    .get(Calendar.DAY_OF_MONTH)) {
+            if (startTime.get(Calendar.DAY_OF_MONTH) != endTime.get(Calendar.DAY_OF_MONTH)) {
                 changeOnlyEndTime = true;
             } else {
                 changeOnlyEndTime = false;
@@ -231,15 +220,13 @@ public class EpgManager {
         // start time
         startTime.set(Calendar.YEAR, curentTime.get(Calendar.YEAR));
         startTime.set(Calendar.MONTH, curentTime.get(Calendar.MONTH));
-        startTime.set(Calendar.DAY_OF_MONTH,
-                curentTime.get(Calendar.DAY_OF_MONTH));
+        startTime.set(Calendar.DAY_OF_MONTH, curentTime.get(Calendar.DAY_OF_MONTH));
         startTime.set(Calendar.MILLISECOND, 0);
         startTime.set(Calendar.SECOND, 0);
         // End time
         endTime.set(Calendar.YEAR, curentTime.get(Calendar.YEAR));
         endTime.set(Calendar.MONTH, curentTime.get(Calendar.MONTH));
-        endTime.set(Calendar.DAY_OF_MONTH,
-                curentTime.get(Calendar.DAY_OF_MONTH));
+        endTime.set(Calendar.DAY_OF_MONTH, curentTime.get(Calendar.DAY_OF_MONTH));
         endTime.set(Calendar.MILLISECOND, 0);
         endTime.set(Calendar.SECOND, 0);
         if (!isForDesiredDay) {
@@ -276,14 +263,12 @@ public class EpgManager {
     public int getRunningEventIndex(ArrayList<EpgEvent> events) {
         TimeDate lCurrentTime;
         try {
-            lCurrentTime = mDTVManager.getDtvManager().getSetupControl()
-                    .getTimeDate();
+            lCurrentTime = mDTVManager.getDtvManager().getSetupControl().getTimeDate();
             Calendar calendarCurrent = lCurrentTime.getCalendar();
             for (int i = 0; i < events.size(); i++) {
                 EpgEvent event = events.get(i);
                 if (calendarCurrent.after(event.getStartTime().getCalendar())
-                        && calendarCurrent.before(event.getEndTime()
-                        .getCalendar())) {
+                        && calendarCurrent.before(event.getEndTime().getCalendar())) {
                     return i;
                 }
             }
@@ -297,8 +282,7 @@ public class EpgManager {
         return mEpgClientId;
     }
 
-    public EpgEvent getPresentFollowingEvent(int serviceIndex,
-            EpgEventType epgEventType) {
+    public EpgEvent getPresentFollowingEvent(int serviceIndex, EpgEventType epgEventType) {
         return null;
     }
 
@@ -310,8 +294,7 @@ public class EpgManager {
     }
 
     public String getEventExtendedDescription(int eventId, int serviceIndex) {
-        return mEpgControl.getEventExtendedDescription(mEpgClientId, eventId,
-                serviceIndex);
+        return mEpgControl.getEventExtendedDescription(mEpgClientId, eventId, serviceIndex);
     }
 
     public TimeDate getWindowStartTime() {

@@ -34,7 +34,7 @@ public class SubtitleManager extends TrackManager<SubtitleTrack> {
      */
     public SubtitleManager(ISubtitleControl subtitleControl) {
         mSubtitleControl = subtitleControl;
-        mRouteManager = DtvManager.getInstance().getRouteManager();
+        mRouteManager = Manager.getInstance().getRouteManager();
     }
 
     /**

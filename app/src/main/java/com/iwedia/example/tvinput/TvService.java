@@ -24,8 +24,7 @@ import android.view.WindowManager;
 import com.iwedia.dtv.service.IServiceCallback;
 import com.iwedia.dtv.service.ServiceListUpdateData;
 import com.iwedia.example.tvinput.TvSession.ITvSession;
-import com.iwedia.example.tvinput.a4tval.AlServiceCallback;
-import com.iwedia.example.tvinput.engine.DtvManager;
+import com.iwedia.example.tvinput.engine.Manager;
 import com.iwedia.example.tvinput.utils.Logger;
 
 import java.util.Hashtable;
@@ -37,15 +36,17 @@ public class TvService extends TvInputService implements ITvSession {
 
     /** App name is used to help with logcat output filtering */
     public static final String APP_NAME = "iWediaTvInput_";
+
     /** Object used to write to logcat output */
+
     private final Logger mLog = new Logger(APP_NAME + TvService.class.getSimpleName(), Logger.ERROR);
+
     /** DVB manager instance. */
-    protected DtvManager mDtvManager = null;
+    protected Manager mDtvManager = null;
+
     /** List of all TVSessions */
     private Hashtable<String, TvSession> mSessionTable;
     private TvSession mCurrentSession = null;
-    private IServiceCallback mServiceCallback;
-    private AlServiceCallback mAlServiceCallback;
 
     private BroadcastReceiver mContentRatingReceiver = new BroadcastReceiver() {
 
@@ -69,7 +70,7 @@ public class TvService extends TvInputService implements ITvSession {
         mLog.d("[onCreateService]");
         super.onCreate();
         mSessionTable = new Hashtable<String, TvSession>();
-        
+
         IntentFilter filter = new IntentFilter();
         filter.addAction(TvInputManager.ACTION_BLOCKED_RATINGS_CHANGED);
         filter.addAction(TvInputManager.ACTION_PARENTAL_CONTROLS_ENABLED_CHANGED);
@@ -80,9 +81,11 @@ public class TvService extends TvInputService implements ITvSession {
             public void run() {
                 super.run();
                 // ! blocking call
-                DtvManager.instantiate(TvService.this);
-                mDtvManager = DtvManager.getIn  stance();
-                
+                Manager.instantiate(TvService.this);
+
+                // ! DTV Manager object is ready
+                mDtvManager = Manager.getInstance();
+
             }
         };
         mwInitThread.start();
@@ -92,7 +95,6 @@ public class TvService extends TvInputService implements ITvSession {
     public void onDestroy() {
         mLog.d("[onDestroyService]");
         super.onDestroy();
-        mDtvManager.getDtvManager().getServiceControl().unregisterCallback(mServiceCallback);
         mDtvManager.deinit();
         unregisterReceiver(mContentRatingReceiver);
     }
@@ -106,13 +108,6 @@ public class TvService extends TvInputService implements ITvSession {
             createOverlay(true);
             mSessionTable.put(inputId, mCurrentSession);
         }
-        
-        
-        // removeeee
-        
-        mAlServiceCallback = new AlServiceCallback(mCurrentSession);
-        mServiceCallback = mAlServiceCallback.getServiceCallback();
-        //mDtvManager.getAlServiceControl().registerCallback(mServiceCallback);
         return mCurrentSession;
     }
 

@@ -12,7 +12,7 @@ package com.iwedia.example.tvinput.callbacks;
 
 import com.iwedia.dtv.epg.IEpgCallback;
 import com.iwedia.example.tvinput.TvService;
-import com.iwedia.example.tvinput.engine.DtvManager;
+import com.iwedia.example.tvinput.engine.Manager;
 import com.iwedia.example.tvinput.utils.Logger;
 
 /**
@@ -24,14 +24,14 @@ public class EpgCallback implements IEpgCallback {
     private final Logger mLog = new Logger(TvService.APP_NAME + EpgCallback.class.getSimpleName(),
             Logger.DEBUG);
     /** Instance of DVB Manager */
-    private DtvManager mDvbManager = null;
+    private Manager mDvbManager = null;
 
     /**
      * Constructor
      *
      * @param dvbManager Instance of DVB Manager
      */
-    public EpgCallback(DtvManager dvbManager) {
+    public EpgCallback(Manager dvbManager) {
         mDvbManager = dvbManager;
     }
 
@@ -87,7 +87,7 @@ public class EpgCallback implements IEpgCallback {
         mDvbManager.updateNowNext(filterID, serviceIndex);
     }
 
-    @Override
+    //@Override
     public void tdtChanged(int filterID, int serviceIndex) {
         mLog.d("[epg_callback][tdtChanged][filder ID" + filterID + "][service index: "
                 + serviceIndex + "]");

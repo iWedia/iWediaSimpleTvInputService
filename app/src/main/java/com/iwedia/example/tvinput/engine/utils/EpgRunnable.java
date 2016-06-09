@@ -8,6 +8,7 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput.engine.utils;
 
 import android.content.ContentValues;
@@ -20,10 +21,11 @@ import android.net.Uri;
 import com.iwedia.dtv.epg.EpgEvent;
 import com.iwedia.dtv.epg.IEpgControl;
 import com.iwedia.example.tvinput.TvService;
+import com.iwedia.example.tvinput.a4tvbal.AlEpgEvent;
 import com.iwedia.example.tvinput.data.ChannelDescriptor;
 import com.iwedia.example.tvinput.data.EpgProgram;
 import com.iwedia.example.tvinput.engine.ChannelManager;
-import com.iwedia.example.tvinput.engine.DtvManager;
+import com.iwedia.example.tvinput.engine.Manager;
 import com.iwedia.example.tvinput.utils.Logger;
 
 import java.util.ArrayList;
@@ -35,39 +37,39 @@ public abstract class EpgRunnable implements Runnable {
 
     /** Object used to write to logcat output */
     private final Logger mLog = new Logger(TvService.APP_NAME + EpgRunnable.class.getSimpleName(),
-            99);
+            Logger.ERROR);
     /** Domain used for content rating */
     private static final String DOMAIN = "com.android.tv";
     /** Content rating system */
     private static final String RATING_SYSTEM = "DVB";
     /** Projection for DB filling */
     private static final String[] projection = {
-            TvContract.Programs.COLUMN_TITLE
+        TvContract.Programs.COLUMN_TITLE
     };
     protected int mServiceIndex;
     protected Long mFrequency;
     /** Application context */
     protected final Context mContext;
     /** DvbManager for accessing middleware API */
-    protected DtvManager mDtvManager;
+    protected Manager mDtvManager;
     /** Channel Manager */
     private ChannelManager mChannelManager;
 
     /**
      * Contructor
-     *
-     * @param context   Application context
+     * 
+     * @param context Application context
      * @param channelId Channel id for Now/Next event
      */
     protected EpgRunnable(Context context) {
         mContext = context;
-        mDtvManager = DtvManager.getInstance();
+        mDtvManager = Manager.getInstance();
         mChannelManager = mDtvManager.getChannelManager();
     }
 
     /**
      * Convert DVB rating from middleware values to predefined String constants
-     *
+     * 
      * @param rate DVB rate of the current program
      * @return Converted rate to String constant
      */
@@ -114,7 +116,7 @@ public abstract class EpgRunnable implements Runnable {
 
     /**
      * Convert program genre from middleware values to predifined constants
-     *
+     * 
      * @param genre Genre of the program
      * @return String value of the program
      */
@@ -180,23 +182,18 @@ public abstract class EpgRunnable implements Runnable {
             mLog.w("[makeProgramContentValues][program exist]");
             return null;
         }
-        rating = TvContentRating.createRating(
-                DOMAIN, RATING_SYSTEM, convertDVBRating(event.getParentalRate()));
+        rating = TvContentRating.createRating(DOMAIN, RATING_SYSTEM,
+                convertDVBRating(event.getParentalRate()));
         contentRatings = new TvContentRating[] {
-                rating
+            rating
         };
         genre = convertDVBGenre(event.getGenre());
-        longDesc = epgControl.getEventExtendedDescription(
-                mDtvManager.getEpgManager().getEpgFilterID(),
-                event.getEventId(), channelIndex);
-        tempProg = new EpgProgram.Builder()
-                .setChannelId(channel.getChannelId())
-                .setTitle(event.getName())
-                .setCanonicalGenres(genre)
-                .setDescription(event.getDescription())
-                .setLongDescription(longDesc)
-                .setStartTimeUtcMillis(startTimeMilis)
-                .setEndTimeUtcMillis(endTimeMilis)
+        longDesc = epgControl.getEventExtendedDescription(mDtvManager.getEpgManager()
+                .getEpgFilterID(), ((AlEpgEvent) event).getEventId(), channelIndex);
+        tempProg = new EpgProgram.Builder().setChannelId(channel.getChannelId())
+                .setTitle(event.getName()).setCanonicalGenres(genre)
+                .setDescription(event.getDescription()).setLongDescription(longDesc)
+                .setStartTimeUtcMillis(startTimeMilis).setEndTimeUtcMillis(endTimeMilis)
                 .setContentRatings(contentRatings).build();
         return tempProg.toContentValues();
     }
@@ -228,8 +225,9 @@ public abstract class EpgRunnable implements Runnable {
     }
 
     /**
-     * This method is used to check if the current event is already present in the DB
-     *
+     * This method is used to check if the current event is already present in
+     * the DB
+     * 
      * @param program Program to check in DB
      * @return True if the program is present in the DB, false otherwise
      */
@@ -250,7 +248,7 @@ public abstract class EpgRunnable implements Runnable {
     }
 
     protected void dumpEvent(EpgEvent event) {
-        mLog.d("Event ID: " + event.getEventId());
+        mLog.d("Event ID: " + ((AlEpgEvent) event).getEventId());
         mLog.d("Event Desc: " + event.getDescription());
         mLog.d("Event StartTime: " + event.getStartTime().toString());
         mLog.d("Event EndTime: " + event.getEndTime().toString());

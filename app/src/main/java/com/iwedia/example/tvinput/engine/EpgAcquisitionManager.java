@@ -72,7 +72,7 @@ public class EpgAcquisitionManager implements IEpgAcquisitionListener {
     }
 
     public boolean shouldStartEPGAquistion() {
-        long key = DtvManager.getInstance().getCurrentTransponder();
+        long key = Manager.getInstance().getCurrentTransponder();
         if (mAcquisitionInProgress && mCurrentAcquisitionFrequency == key) {
             mLog.d("[]");
             // Acquisition in progress for current freq

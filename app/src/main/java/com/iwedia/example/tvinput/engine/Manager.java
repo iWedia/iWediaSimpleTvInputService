@@ -8,11 +8,10 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput.engine;
 
-import android.app.AlarmManager;
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.os.AsyncTask;
@@ -20,17 +19,19 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.RemoteException;
 import android.os.SystemProperties;
-import android.provider.Settings;
 import android.view.WindowManager;
 
-import com.iwedia.dtv.dtvmanager.DTVManager;
 import com.iwedia.dtv.dtvmanager.IDTVManager;
 import com.iwedia.dtv.epg.IEpgControl;
 import com.iwedia.dtv.service.Service;
 import com.iwedia.dtv.service.ServiceDescriptor;
 import com.iwedia.dtv.types.InternalException;
 import com.iwedia.example.tvinput.TvService;
-import com.iwedia.example.tvinput.TvSession;
+import com.iwedia.example.tvinput.a4tvbal.AlDIsplayControl;
+import com.iwedia.example.tvinput.a4tvbal.AlDtvManager;
+import com.iwedia.example.tvinput.a4tvbal.AlEpgControl;
+import com.iwedia.example.tvinput.a4tvbal.AlScanControl;
+import com.iwedia.example.tvinput.a4tvbal.AlServiceControl;
 import com.iwedia.example.tvinput.callbacks.EpgCallback;
 import com.iwedia.example.tvinput.data.ChannelDescriptor;
 import com.iwedia.example.tvinput.engine.epg.EpgFull;
@@ -40,26 +41,24 @@ import com.iwedia.example.tvinput.utils.Logger;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Calendar;
-import java.util.Date;
 import java.util.concurrent.Semaphore;
 
 /**
  * Manager for handling MW Components.
  */
-public class DtvManager {
+public class Manager {
 
     /** Object used to write to logcat output */
-    private static final Logger mLog = new Logger(TvService.APP_NAME + DtvManager.class.getSimpleName(),
-            Logger.ERROR);
+    private static final Logger mLog = new Logger(TvService.APP_NAME
+            + Manager.class.getSimpleName(), Logger.DEBUG);
 
     public enum MwRunningState {
         UNKNOWN, NOT_RUNNING, RUNNING
     };
 
-    public static final String MW_STARTED_SYSTEM_PROP = "iwedia.general.mw_ready";
-    public static final String MW_STARTED_YES = "1";
-    public static final String MW_STARTED_NO = "0";
+    public static final String MW_STARTED_SYSTEM_PROP = "comedia.run";
+    public static final String MW_STARTED_YES = "true";
+    public static final String MW_STARTED_NO = "false";
 
     /**
      * CallBack for EPG events.
@@ -75,41 +74,56 @@ public class DtvManager {
 
     /** Comedia's Master list index */
     public static final int MASTER_LIST_INDEX = 0;
+
     /** DtvManager instance */
     private IDTVManager mDtvManager = null;
+
     /** Subtitle manager instance */
     private SubtitleManager mSubtitleManager;
+
     /** Audio Track manager instance */
     private AudioManager mAudioManager;
+
     /** Volume manager instance */
     private android.media.AudioManager mVolumeManager;
+
     /** Channel manager instance */
     private ChannelManager mChannelManager;
+
     /** Route manager instance */
     private RouteManager mRouteManager;
+
     /** Instance of this manager */
-    private static DtvManager sInstance = null;
+    private static Manager sInstance = null;
+
     /** Current active channel */
     private int mCurrentlyActiveChannel = 0;
+
     /** Thread for handler creation */
     private HandlerThread mHandlerThread;
+
     /** Logic for acquisition timings */
     private EpgAcquisitionManager mEpgAcquisitionManager;
+
     /** Handler for adding EPG events */
     private Handler mEpgHandler;
+
     /** EPG CallBack */
     private EpgCallback mEPGCallBack = null;
+
     /** Application context */
     private static Context mContext;
 
     /** Current volume */
     private int mVolume;
+
     /** EPG manager helper class */
     private EpgManager mEpgManager = null;
+
     /** Video destination rectangle */
     private final Rect mVideoRect = new Rect();
 
-    private static CheckMiddlewareAsyncTask mCheckMw = new CheckMiddlewareAsyncTask();
+    private static CheckMiddlewareAsyncTask mCheckMw;
 
     private static MwRunningState mMwRunningState = MwRunningState.UNKNOWN;
 
@@ -121,17 +135,18 @@ public class DtvManager {
 
     /**
      * Gets an instance of this manager
-     *
+     * 
      * @return Instance of this manager
      */
-    public static DtvManager getInstance() {
+    public static Manager getInstance() {
         return sInstance;
     }
 
     /**
      * Instantiates this manager
-     *
-     * @throws RemoteException If something is wrong with initialization of MW API
+     * 
+     * @throws RemoteException If something is wrong with initialization of MW
+     *             API
      */
     public static void instantiate(Context context) {
         mContext = context;
@@ -142,6 +157,7 @@ public class DtvManager {
                         mMwClientWaitingCounter = 0;
                     }
                     mMwRunningState = MwRunningState.NOT_RUNNING;
+                    mCheckMw = new CheckMiddlewareAsyncTask();
                     mCheckMw.execute();
                 case NOT_RUNNING:
                     synchronized (mMwClientWaitingCounterLocker) {
@@ -157,6 +173,7 @@ public class DtvManager {
                     break;
                 case RUNNING:
                     //
+                    mLog.d("[instantiate][already running]");
                     break;
             }
         }
@@ -164,12 +181,12 @@ public class DtvManager {
 
     /**
      * Constructor
-     *
-     * @throws RemoteException If something is wrong with initialization of MW API
+     * 
+     * @throws RemoteException If something is wrong with initialization of MW
+     *             API
      */
-    private DtvManager(Context context) throws RemoteException {
-        mContext = context;
-        mDtvManager = new DTVManager();
+    private Manager() throws RemoteException {
+        mDtvManager = new AlDtvManager();
         mVolumeManager = (android.media.AudioManager) mContext
                 .getSystemService(Context.AUDIO_SERVICE);
         WindowManager wm = (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
@@ -180,7 +197,7 @@ public class DtvManager {
 
     /**
      * Gets MW Control handle of EPG
-     *
+     * 
      * @return EpgControl handle
      */
     public IEpgControl getEpgControl() {
@@ -193,7 +210,7 @@ public class DtvManager {
 
     /**
      * Add ChannelManager instance to this manager
-     *
+     * 
      * @param channelManager ChannelManager instance
      */
     public void setChannelManager(ChannelManager channelManager) {
@@ -202,7 +219,7 @@ public class DtvManager {
 
     /**
      * Initialize Service.
-     *
+     * 
      * @throws InternalException
      */
     private void initializeDtvFunctionality() throws RemoteException {
@@ -232,7 +249,7 @@ public class DtvManager {
 
     /**
      * Stop MW video playback.
-     *
+     * 
      * @throws InternalException if stop is called with wrong parameters
      */
     public void stop() throws InternalException {
@@ -245,7 +262,7 @@ public class DtvManager {
 
     /**
      * Change Channel by Number.
-     *
+     * 
      * @param channelNumber
      */
     public boolean start(ChannelDescriptor channel) throws InternalException {
@@ -277,12 +294,12 @@ public class DtvManager {
         mDtvManager.getServiceControl().startService(route, MASTER_LIST_INDEX,
                 mCurrentlyActiveChannel);
         if (ExampleSwitches.ENABLE_SCALE_FEATURE) {
-            mDtvManager.getDisplayControl().scaleWindow(route, 200, 0, 1280, 720);
+            ((AlDIsplayControl) mDtvManager.getDisplayControl()).scaleWindow(route, 200, 0, 1280,
+                    720);
         } else {
             mLog.d("[startDvb][set rect: " + mVideoRect + "]");
-            mDtvManager.getDisplayControl().scaleWindow(route,
-                    mVideoRect.left, mVideoRect.top,
-                    mVideoRect.width(), mVideoRect.height());
+            ((AlDIsplayControl) mDtvManager.getDisplayControl()).scaleWindow(route,
+                    mVideoRect.left, mVideoRect.top, mVideoRect.width(), mVideoRect.height());
         }
         return true;
     }
@@ -297,11 +314,11 @@ public class DtvManager {
         mRouteManager.updateCurrentLiveRoute(mRouteManager.getLiveRouteIp());
         mDtvManager.getServiceControl().zapURL(mRouteManager.getLiveRouteIp(), channel.getUrl());
         if (ExampleSwitches.ENABLE_SCALE_FEATURE) {
-            mDtvManager.getDisplayControl().scaleWindow(route, 0, 200, 640, 480);
+            ((AlDIsplayControl) mDtvManager.getDisplayControl()).scaleWindow(route, 0, 200, 640,
+                    480);
         } else {
-            mDtvManager.getDisplayControl().scaleWindow(route,
-                    mVideoRect.left, mVideoRect.top,
-                    mVideoRect.width(), mVideoRect.height());
+            ((AlDIsplayControl) mDtvManager.getDisplayControl()).scaleWindow(route,
+                    mVideoRect.left, mVideoRect.top, mVideoRect.width(), mVideoRect.height());
         }
         return true;
     }
@@ -368,7 +385,7 @@ public class DtvManager {
 
     /**
      * Set Volume Mute Status.
-     *
+     * 
      * @throws RemoteException
      */
     public void setMute() throws RemoteException {
@@ -420,7 +437,7 @@ public class DtvManager {
 
     /**
      * Gets SubtitleManager
-     *
+     * 
      * @return Manager instance
      */
     public SubtitleManager getSubtitleManager() {
@@ -429,7 +446,7 @@ public class DtvManager {
 
     /**
      * Gets Audio Manager
-     *
+     * 
      * @return Manager instance
      */
     public AudioManager getAudioManager() {
@@ -438,7 +455,7 @@ public class DtvManager {
 
     /**
      * Gets Channel Manager
-     *
+     * 
      * @return Manager instance
      */
     public ChannelManager getChannelManager() {
@@ -447,7 +464,7 @@ public class DtvManager {
 
     /**
      * Gets Route Manager
-     *
+     * 
      * @return Manager instance
      */
     public RouteManager getRouteManager() {
@@ -456,7 +473,7 @@ public class DtvManager {
 
     /**
      * Gets Epg Acquisition Manager
-     *
+     * 
      * @return EpgAcquisitionManager instance
      */
     public EpgAcquisitionManager getEpgAcquisitionManager() {
@@ -467,6 +484,7 @@ public class DtvManager {
      * Deinit DVB manager
      */
     public void deinit() {
+        mMwRunningState = MwRunningState.UNKNOWN;
         mEpgManager.unregisterCallback(mEPGCallBack);
         try {
             stop();
@@ -490,7 +508,7 @@ public class DtvManager {
             super();
 
             mWaitCycle = 1000;
-            mWaitCounter = 10;
+            mWaitCounter = 100;
         }
 
         @Override
@@ -498,8 +516,7 @@ public class DtvManager {
             String isMiddlewareInit = MW_STARTED_NO;
 
             while (true) {
-                isMiddlewareInit = SystemProperties.get(MW_STARTED_SYSTEM_PROP,
-                        MW_STARTED_NO);
+                isMiddlewareInit = SystemProperties.get(MW_STARTED_SYSTEM_PROP, MW_STARTED_NO);
                 if (isMiddlewareInit.equals(MW_STARTED_YES)) {
                     mLog.d("[CheckMiddlewareAsyncTask][doInBackground][mw is started]");
                     break;
@@ -513,6 +530,8 @@ public class DtvManager {
                         mLog.d("[CheckMiddlewareAsyncTask][doInBackground][timeout 10 seconds, mw not started]");
                         break;
                     }
+                    mLog.d("[CheckMiddlewareAsyncTask][doInBackground][wait for MW service]["
+                            + mWaitCounter + "]");
                     mWaitCounter--;
                 }
             }
@@ -524,7 +543,7 @@ public class DtvManager {
             mLog.d("[CheckMiddlewareAsyncTask][onPostExecute][result: " + result + "]");
             if (result.equals(MW_STARTED_YES)) {
                 try {
-                    sInstance = new DtvManager();
+                    sInstance = new Manager();
                     sInstance.initializeDtvFunctionality();
 
                     mMwRunningState = MwRunningState.RUNNING;

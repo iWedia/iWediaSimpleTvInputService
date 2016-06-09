@@ -74,7 +74,7 @@ public class ChannelManager {
     /**
      * DVB manager, entry point for MW
      */
-    private DtvManager mDvbManager;
+    private Manager mDvbManager;
     private IDTVManager mDTVManger;
     private RouteManager mRouteManager;
     private IScanControl mScanControl;
@@ -84,7 +84,7 @@ public class ChannelManager {
      *
      * @param context Application context
      */
-    public ChannelManager(DtvManager dvbManager, Context context) {
+    public ChannelManager(Manager dvbManager, Context context) {
         mContext = context;
         mDvbManager = dvbManager;
         mDTVManger = mDvbManager.getDtvManager();
@@ -228,7 +228,7 @@ public class ChannelManager {
                 properIndex++;
             }
             ServiceDescriptor servDesc = serviceControl.getServiceDescriptor(
-                    DtvManager.MASTER_LIST_INDEX, properIndex);
+                    Manager.MASTER_LIST_INDEX, properIndex);
             formattedChannelNumber = String.format(Locale.ENGLISH, "%02d",
                     displayNumber);
             channels.add(new ChannelDescriptor(formattedChannelNumber, servDesc
@@ -296,7 +296,7 @@ public class ChannelManager {
      */
     public int getChannelListSize() {
         int serviceCount = mDTVManger.getServiceControl().getServiceListCount(
-                DtvManager.MASTER_LIST_INDEX);
+                Manager.MASTER_LIST_INDEX);
         if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
             serviceCount += mIpOnlyChannels.size();
             // for Dummy channel which is used for MEDIA playback
@@ -307,7 +307,7 @@ public class ChannelManager {
 
     public int getDtvChannelListSize() {
         int serviceCount = mDTVManger.getServiceControl().getServiceListCount(
-                DtvManager.MASTER_LIST_INDEX);
+                Manager.MASTER_LIST_INDEX);
         if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
             // for Dummy channel which is used for MEDIA playback
             serviceCount--;

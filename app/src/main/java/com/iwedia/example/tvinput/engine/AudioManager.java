@@ -31,7 +31,7 @@ public class AudioManager extends TrackManager<AudioTrack> {
      */
     public AudioManager(IAudioControl audioControl) {
         this.mAudioControl = audioControl;
-        mRouteManager = DtvManager.getInstance().getRouteManager();
+        mRouteManager = Manager.getInstance().getRouteManager();
     }
 
     /**

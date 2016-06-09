@@ -51,13 +51,5 @@
                 android:name="android.media.tv.input"
                 android:resource="@xml/tvservice"/>
         </service>
-        <receiver
-            android:name="com.iwedia.example.tvinput.BootUpReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter android:priority="500">
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-            </intent-filter>
-        </receiver>
     </application>
 </manifest>

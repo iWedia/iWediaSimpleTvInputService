@@ -55,7 +55,7 @@ public class RouteManager {
      * Constructor
      */
     public RouteManager() {
-        mDtvManager = DtvManager.getInstance().getDtvManager();
+        mDtvManager = Manager.getInstance().getDtvManager();
         initialize();
     }
 

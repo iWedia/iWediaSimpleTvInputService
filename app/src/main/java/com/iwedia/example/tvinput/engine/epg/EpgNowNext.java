@@ -8,14 +8,16 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput.engine.epg;
 
 import android.content.Context;
 
-import com.iwedia.dtv.epg.EpgEvent;
 import com.iwedia.dtv.epg.EpgEventType;
 import com.iwedia.dtv.epg.IEpgControl;
 import com.iwedia.dtv.types.InternalException;
+import com.iwedia.example.tvinput.a4tvbal.AlEpgControl;
+import com.iwedia.example.tvinput.a4tvbal.AlEpgEvent;
 import com.iwedia.example.tvinput.engine.utils.EpgRunnable;
 
 /**
@@ -28,8 +30,8 @@ public class EpgNowNext extends EpgRunnable {
 
     /**
      * Contructor
-     *
-     * @param context   Application context
+     * 
+     * @param context Application context
      * @param channelId Channel id for Now/Next event
      */
     public EpgNowNext(Context context, int channelIndex) {
@@ -39,22 +41,18 @@ public class EpgNowNext extends EpgRunnable {
 
     @Override
     public void run() {
-        EpgEvent now = null;
-        EpgEvent next = null;
-        IEpgControl epgControl = mDtvManager.getEpgControl();
+        AlEpgEvent now = null;
+        AlEpgEvent next = null;
+        AlEpgControl epgControl = (AlEpgControl) mDtvManager.getEpgControl();
         try {
             // Get Present Event
-            now = epgControl.getPresentFollowingEvent(
-                    mDtvManager.getEpgManager().getEpgFilterID(),
-                    (int) mChannelIndex, EpgEventType.PRESENT_EVENT);
+            now = (AlEpgEvent) epgControl.getPresentFollowingEvent(mDtvManager.getEpgManager()
+                    .getEpgFilterID(), (int) mChannelIndex, EpgEventType.PRESENT_EVENT);
             // Get Next Event
-            next = epgControl.getPresentFollowingEvent(
-                    mDtvManager.getEpgManager().getEpgFilterID(),
-                    (int) mChannelIndex, EpgEventType.FOLLOWING_EVENT);
+            next = (AlEpgEvent) epgControl.getPresentFollowingEvent(mDtvManager.getEpgManager()
+                    .getEpgFilterID(), (int) mChannelIndex, EpgEventType.FOLLOWING_EVENT);
         } catch (IllegalArgumentException iae) {
             iae.printStackTrace();
-        } catch (InternalException ie) {
-            ie.printStackTrace();
         }
         addProgram(now, mChannelIndex);
         addProgram(next, mChannelIndex);

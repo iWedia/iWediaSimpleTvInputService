@@ -60,7 +60,7 @@ public class Logger {
      * @param text Text to print
      */
     public void d(String text) {
-        if (mOutputLevel >= DEBUG)
+        if (mOutputLevel <= DEBUG)
             Log.d(mTag, text);
     }
 
@@ -70,7 +70,7 @@ public class Logger {
      * @param text Text to print
      */
     public void e(String text) {
-        if (mOutputLevel >= ERROR)
+        if (mOutputLevel <= ERROR)
             Log.e(mTag, text);
     }
 
@@ -80,7 +80,7 @@ public class Logger {
      * @param text Text to print
      */
     public void i(String text) {
-        if (mOutputLevel >= INFO)
+        if (mOutputLevel <= INFO)
             Log.i(mTag, text);
     }
 
@@ -90,7 +90,7 @@ public class Logger {
      * @param text Text to print
      */
     public void v(String text) {
-        if (mOutputLevel >= VERBOSE)
+        if (mOutputLevel <= VERBOSE)
             Log.v(mTag, text);
     }
 
@@ -100,7 +100,7 @@ public class Logger {
      * @param text Text to print
      */
     public void w(String text) {
-        if (mOutputLevel >= WARN)
+        if (mOutputLevel <= WARN)
             Log.w(mTag, text);
     }
 }
