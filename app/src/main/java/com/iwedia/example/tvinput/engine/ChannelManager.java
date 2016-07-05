@@ -22,6 +22,7 @@ import com.iwedia.dtv.dtvmanager.IDTVManager;
 import com.iwedia.dtv.route.broadcast.IBroadcastRouteControl;
 import com.iwedia.dtv.route.broadcast.RouteFrontendType;
 import com.iwedia.dtv.route.broadcast.RouteInstallSettings;
+import com.iwedia.dtv.route.broadcast.routemanager.Routes;
 import com.iwedia.dtv.scan.FecType;
 import com.iwedia.dtv.scan.IScanControl;
 import com.iwedia.dtv.scan.Modulation;
@@ -114,7 +115,7 @@ public class ChannelManager {
         }
         if (mAllChannels.isEmpty()) {
             mLog.i("[initialize][first time initialization]");
-            refreshChannelList();
+            refreshChannelList(mDvbManager.getCurrentRoutes());
         }
         print(mAllChannels);
     }
@@ -204,7 +205,7 @@ public class ChannelManager {
         cursor.close();
     }
 
-    public void refreshChannelList() {
+    public void refreshChannelList(Routes routes) {
         int displayNumber = 1;
         String formattedChannelNumber = "";
         List<ChannelDescriptor> channels = new ArrayList<ChannelDescriptor>();
@@ -216,24 +217,22 @@ public class ChannelManager {
         mContext.getContentResolver().delete(TvContract.Programs.CONTENT_URI,
                 null, null);
         // 2) Add DVB channels founded from scan
-        int channelListSize = getChannelListSize();
-        if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
+        int channelListSize = getChannelListSize(routes);
+        if (routes.getLiveRoute() != null) {
             channelListSize -= mIpOnlyChannels.size();
         }
         // ! Limitation: support only 1 DVB route in this example
         SourceType type = SourceType.UNDEFINED;
-        if (mRouteManager.getInstallRouteCab() != RouteManager.EC_INVALID_ROUTE) {
-            type = SourceType.CAB;
-        } else if (mRouteManager.getInstallRouteTer() != RouteManager.EC_INVALID_ROUTE) {
+        if (routes == mDvbManager.getRouteManager().getTerRoute()) {
             type = SourceType.TER;
-        } else if (mRouteManager.getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
-            type = SourceType.SAT;
+        } else if (routes == mDvbManager.getRouteManager().getIpPrimaryRoute()) {
+            type = SourceType.IP;
         }
         for (int i = 0; i < channelListSize; i++) {
             // ! If there is IP first element in service list (use case with
             // Hybrid tuner) it's a DUMMY channel
             int properIndex = i;
-            if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
+            if (mDvbManager.getRouteManager().getIpPrimaryRoute() != null) {
                 properIndex++;
             }
             ServiceDescriptor servDesc = serviceControl.getServiceDescriptor(
@@ -284,41 +283,30 @@ public class ChannelManager {
     }
 
     public void startScan() throws InternalException {
-        if (mRouteManager.getInstallRouteCab() != ChannelManager.EC_ID_NOT_FOUND) {
-            mScanControl.autoScan(mDvbManager.getRouteManager().getInstallRouteCab());
-            mRouteManager.updateCurrentInstallRoute(mRouteManager.getInstallRouteCab());
-        } else if (mRouteManager.getInstallRouteTer() != ChannelManager.EC_ID_NOT_FOUND) {
+        if (mDvbManager.getRouteManager().getTerRoute().getInstallRoute() != null) {
             RouteInstallSettings settings = new RouteInstallSettings();
             settings.setFrontendType(RouteFrontendType.TER);
-            mBroadcastRouteControl.configureInstallRoute(mDvbManager.getRouteManager()
-                    .getInstallRouteTer(), settings);
-            mScanControl.autoScan(mDvbManager.getRouteManager().getInstallRouteTer());
-            mRouteManager.updateCurrentInstallRoute(mRouteManager.getInstallRouteTer());
-        } else if (mRouteManager.getInstallRouteSat() != ChannelManager.EC_ID_NOT_FOUND) {
-            mScanControl.setFrequency(11156);
-            mScanControl.setSymbolRate(12000);
-            mScanControl.setPolarization(Polarization.HORIZONTAL);
-            mScanControl.setModulation(Modulation.MODULATION_QPSK);
-            mScanControl.setFecType(FecType.FEC_3_4);
-            mScanControl.setRollOff(RollOff.ROLL_OFF_35);
-            mScanControl.manualScan(mRouteManager.getInstallRouteSat());
-            mRouteManager.updateCurrentInstallRoute(mRouteManager.getInstallRouteSat());
-        } else if (mRouteManager.getInstallRouteIp() != ChannelManager.EC_ID_NOT_FOUND) {
+            int terInstallRoute = mDvbManager.getRouteManager().getTerRoute().getInstallRouteID();
+            mBroadcastRouteControl.configureInstallRoute(terInstallRoute, settings);
+            mScanControl.autoScan(terInstallRoute);
+        } else if (mDvbManager.getRouteManager().getIpPrimaryRoute().getInstallRoute() != null) {
             // Usually operator specific scan goes here
         }
     }
 
     public void stopScan() throws InternalException {
-        mScanControl.abortScan(mRouteManager.getCurrentInstallRoute());
+        if (mDvbManager.getRouteManager().getTerRoute().getInstallRoute() != null) {
+            mScanControl.abortScan(mDvbManager.getRouteManager().getTerRoute().getInstallRouteID());
+        }
     }
 
     /**
      * Get Size of Channel List.
      */
-    public int getChannelListSize() {
+    public int getChannelListSize(Routes routes) {
         int serviceCount = mDTVManger.getServiceControl().getServiceListCount(
                 DtvManager.MASTER_LIST_INDEX);
-        if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
+        if ((routes != null) && (routes.getLiveRoute() != null)) {
             serviceCount += mIpOnlyChannels.size();
             // for Dummy channel which is used for MEDIA playback
             serviceCount--;
@@ -326,10 +314,10 @@ public class ChannelManager {
         return serviceCount;
     }
 
-    public int getDtvChannelListSize() {
+    public int getDtvChannelListSize(Routes routes) {
         int serviceCount = mDTVManger.getServiceControl().getServiceListCount(
                 DtvManager.MASTER_LIST_INDEX);
-        if (mRouteManager.getLiveRouteIp() != RouteManager.EC_INVALID_ROUTE) {
+        if (routes.getLiveRoute() != null) {
             // for Dummy channel which is used for MEDIA playback
             serviceCount--;
         }

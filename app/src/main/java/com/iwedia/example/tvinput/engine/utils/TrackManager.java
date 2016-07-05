@@ -25,7 +25,7 @@ public abstract class TrackManager<T> {
      *
      * @return Track count of the current track type
      */
-    public abstract int getTrackCount();
+    public abstract int getTrackCount(int routeId);
 
     /**
      * Gets a specified track from the manager
@@ -33,7 +33,7 @@ public abstract class TrackManager<T> {
      * @param index Index of a track
      * @return Track
      */
-    public abstract T getTrack(int index);
+    public abstract T getTrack(int routeId, int index);
 
     /**
      * Convert trigrams for the whole language

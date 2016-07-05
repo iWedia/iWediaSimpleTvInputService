@@ -10,257 +10,436 @@
  */
 package com.iwedia.example.tvinput.engine;
 
+
+import android.os.RemoteException;
+
+import com.iwedia.example.tvinput.TvService;
+import com.iwedia.example.tvinput.utils.Logger;
 import com.iwedia.dtv.dtvmanager.IDTVManager;
-import com.iwedia.dtv.route.broadcast.IBroadcastRouteControl;
+import com.iwedia.dtv.route.broadcast.RouteComponentType;
 import com.iwedia.dtv.route.broadcast.RouteDemuxDescriptor;
 import com.iwedia.dtv.route.broadcast.RouteFrontendDescriptor;
 import com.iwedia.dtv.route.broadcast.RouteFrontendType;
-import com.iwedia.dtv.route.common.ICommonRouteControl;
+import com.iwedia.dtv.route.broadcast.RouteLiveSettings;
+import com.iwedia.dtv.route.broadcast.RouteMassStorageDescriptor;
+import com.iwedia.dtv.route.broadcast.routemanager.InstallRoutes;
+import com.iwedia.dtv.route.broadcast.routemanager.LiveRoutes;
+import com.iwedia.dtv.route.broadcast.routemanager.PlaybackRoutes;
+import com.iwedia.dtv.route.broadcast.routemanager.RecordRoutes;
+import com.iwedia.dtv.route.broadcast.routemanager.Routes;
 import com.iwedia.dtv.route.common.RouteDecoderDescriptor;
 import com.iwedia.dtv.route.common.RouteInputOutputDescriptor;
+import com.iwedia.dtv.types.VideoPosition;
 import com.iwedia.dtv.service.SourceType;
-import com.iwedia.example.tvinput.TvService;
-import com.iwedia.example.tvinput.utils.Logger;
 
 import java.util.EnumSet;
 
-/**
- * A simple class that is used for Route handling
- */
 public class RouteManager {
 
-    /**
-     * Object used to write to logcat output
-     */
+    private static RouteManager instance;
+
     private final Logger mLog = new Logger(TvService.APP_NAME + RouteManager.class.getSimpleName(),
             Logger.ERROR);
-    public static final int EC_INVALID_ROUTE = -1;
-    /** Middleware routes */
-    private int mCurrentLiveRoute = EC_INVALID_ROUTE;
-    private int mLiveRouteSat = EC_INVALID_ROUTE;
-    private int mLiveRouteTer = EC_INVALID_ROUTE;
-    private int mLiveRouteCab = EC_INVALID_ROUTE;
-    private int mLiveRouteIp = EC_INVALID_ROUTE;
-    private int mCurrentInstallRoute = EC_INVALID_ROUTE;
-    private int mInstallRouteTer = EC_INVALID_ROUTE;
-    private int mInstallRouteIp = EC_INVALID_ROUTE;
-    private int mInstallRouteCab = EC_INVALID_ROUTE;
-    private int mInstallRouteSat = EC_INVALID_ROUTE;
-    /** Flag for determining board tuner configuration */
-    private boolean isHybridTuner = false;
-    /** DTV manager instance */
-    private IDTVManager mDtvManager;
+
+    public static final int DEMUX_ID_NOT_USED_WITH_COMEDIA = 0;
+
+    private Routes mIpPrimaryRoutes = null;
+    private Routes mIpSecondaryRoutes = null;
+    private Routes mIpPipRoutes = null;
+    private Routes mTerLiveRoutes = null;
+
+    private PlaybackRoutes mPlaybackMainRoute = null;
+    private PlaybackRoutes mPlaybackPipRoute = null;
+
+    private IDTVManager mDtvManager = null;
+
+    private InstallRoutes mInstallRoutes[];
+    private LiveRoutes mLiveRoutes[];
+    private RecordRoutes mRecordRoutes[];
+    private PlaybackRoutes mPlaybackRoutes[];
+
+    private final int IP_FRONTEND = 1;
 
     /**
-     * Constructor
+     * Initialize RouteManager.
      */
-    public RouteManager() {
-        mDtvManager = DtvManager.getInstance().getDtvManager();
-        initialize();
+    public RouteManager(IDTVManager dtvManager) {
+        try {
+            mDtvManager = dtvManager;
+            initializeRouteIds();
+        } catch (RemoteException e) {
+            mLog.e("Error initializing route manager");
+            e.printStackTrace();
+        }
+
+        mLog.i("Route manager initialized");
     }
 
     /**
-     * Initialize MW Routes
+     * Initialize routes.
+     * 
+     * @return true if routes initialized correctly, false otherwise
+     * @throws RemoteException
      */
-    private void initialize() {
-        IBroadcastRouteControl broadcastRouteControl = null;
-        broadcastRouteControl = mDtvManager.getBroadcastRouteControl();
-        ICommonRouteControl commonRouteControl = null;
-        commonRouteControl = mDtvManager.getCommonRouteControl();
-        // Retrieve demux descriptor.
-        RouteDemuxDescriptor demuxDescriptor = null;
-        demuxDescriptor = broadcastRouteControl.getDemuxDescriptor(0);
-        // Retrieve decoder descriptor.
-        RouteDecoderDescriptor decoderDescriptor = null;
-        decoderDescriptor = commonRouteControl.getDecoderDescriptor(0);
-        // Retrieve output descriptor.
-        RouteInputOutputDescriptor outputDescriptor = null;
-        outputDescriptor = commonRouteControl.getInputOutputDescriptor(0);
-        // get number if frontends
-        int numberOfFrontends = 0;
-        numberOfFrontends = broadcastRouteControl.getFrontendNumber();
-        // Find DVB and IP front-end descriptors.
-        EnumSet<RouteFrontendType> frontendTypes = null;
-        for (int i = 0; i < numberOfFrontends; i++) {
-            RouteFrontendDescriptor frontendDescriptor = null;
-            frontendDescriptor = broadcastRouteControl.getFrontendDescriptor(i);
-            frontendTypes = frontendDescriptor.getFrontendType();
-            for (RouteFrontendType frontendType : frontendTypes) {
-                switch (frontendType) {
-                    case SAT: {
-                        if (mLiveRouteSat == EC_INVALID_ROUTE) {
-                            mLiveRouteSat = getLiveRouteId(frontendDescriptor, demuxDescriptor,
-                                    decoderDescriptor, outputDescriptor, broadcastRouteControl);
-                            mLog.v("mLiveRouteSat: " + mLiveRouteSat);
-                        }
-                        if (mInstallRouteSat == -1) {
-                            mInstallRouteSat = getInstallRouteId(frontendDescriptor,
-                                    demuxDescriptor, decoderDescriptor, outputDescriptor,
-                                    broadcastRouteControl);
-                            mCurrentInstallRoute = mInstallRouteSat;
-                            mLog.v("mInstallRouteSat: " + mInstallRouteSat);
-                        }
-                        break;
-                    }
-                    case CAB: {
-                        if (mLiveRouteCab == EC_INVALID_ROUTE) {
-                            mLiveRouteCab = getLiveRouteId(frontendDescriptor, demuxDescriptor,
-                                    decoderDescriptor, outputDescriptor, broadcastRouteControl);
-                            mLog.v("mLiveRouteCab: " + mLiveRouteCab);
-                        }
-                        if (mInstallRouteCab == -1) {
-                            mInstallRouteCab = getInstallRouteId(frontendDescriptor,
-                                    demuxDescriptor, decoderDescriptor, outputDescriptor,
-                                    broadcastRouteControl);
-                            mCurrentInstallRoute = mInstallRouteCab;
-                            mLog.v("mInstallRouteCab: " + mInstallRouteCab);
-                        }
-                        break;
-                    }
-                    case TER: {
-                        if (mLiveRouteTer == EC_INVALID_ROUTE) {
-                            mLiveRouteTer = getLiveRouteId(frontendDescriptor, demuxDescriptor,
-                                    decoderDescriptor, outputDescriptor, broadcastRouteControl);
-                            mLog.v("mLiveRouteTer: " + mLiveRouteTer);
-                        }
-                        if (mInstallRouteTer == -1) {
-                            mInstallRouteTer = getInstallRouteId(frontendDescriptor,
-                                    demuxDescriptor, decoderDescriptor, outputDescriptor,
-                                    broadcastRouteControl);
-                            mCurrentInstallRoute = mInstallRouteTer;
-                            mLog.v("mInstallRouteTer: " + mInstallRouteTer);
-                        }
-                        break;
-                    }
-                    case IP: {
-                        if (mLiveRouteIp == EC_INVALID_ROUTE) {
-                            mLiveRouteIp = getLiveRouteId(frontendDescriptor, demuxDescriptor,
-                                    decoderDescriptor, outputDescriptor, broadcastRouteControl);
-                            mLog.v("mLiveRouteIp: " + mLiveRouteIp);
-                        }
-                        if (mInstallRouteIp == -1) {
-                            mInstallRouteIp = getInstallRouteId(frontendDescriptor,
-                                    demuxDescriptor, decoderDescriptor, outputDescriptor,
-                                    broadcastRouteControl);
-                            mCurrentInstallRoute = mInstallRouteIp;
-                            mLog.v("mInstallRouteIp: " + mInstallRouteIp);
-                        }
-                        break;
-                    }
-                    default:
-                        break;
+    public boolean initializeRouteIds() throws RemoteException {
+        mLog.d("[initializeRouteIds]");
+
+        // 1) Get number of components
+        long feNum = 0;
+        feNum = mDtvManager.getBroadcastRouteControl().getFrontendNumber();
+
+        long storageNum = 0;
+        storageNum = mDtvManager.getBroadcastRouteControl().getMassStorageNumber();
+
+        long decNum = 0;
+        decNum = mDtvManager.getCommonRouteControl().getDecoderNumber();
+
+        long inputOutputNum = 0;
+        inputOutputNum = mDtvManager.getCommonRouteControl().getInputOutputNumber();
+
+        mLog.d("[initializeRouteIds][" + feNum + ", " + storageNum
+                + ", " + decNum + ", "
+                + inputOutputNum + ", " + "]");
+
+        // 2) allocate memory
+        int installNum = 0, liveNum = 0, recordNum = 0, playbackNum = 0;
+
+        mInstallRoutes = null;
+        installNum = (int) feNum;
+        if (installNum > 0) {
+            mInstallRoutes = new InstallRoutes[installNum];
+        }
+
+        mLiveRoutes = null;
+        liveNum = (int) feNum * (int) decNum * (int) inputOutputNum;
+        if (liveNum > 0) {
+            mLiveRoutes = new LiveRoutes[liveNum];
+        }
+
+        mRecordRoutes = null;
+        recordNum = (int) feNum * (int) storageNum;
+        if (recordNum > 0) {
+            mRecordRoutes = new RecordRoutes[recordNum];
+        }
+
+        mPlaybackRoutes = null;
+        playbackNum = (int) storageNum * (int) decNum
+                * (int) inputOutputNum;
+        if (playbackNum > 0) {
+            mPlaybackRoutes = new PlaybackRoutes[playbackNum];
+        }
+
+        // 3) Install routes
+        int installIndex = 0;
+
+        mLog.d("[initializeRouteIds][install routes]");
+        for (long frontendLoop = 0; frontendLoop < feNum; frontendLoop++) {
+            RouteFrontendDescriptor frontedDesc;
+            frontedDesc = mDtvManager.getBroadcastRouteControl().getFrontendDescriptor(
+                    (int) frontendLoop);
+
+            mInstallRoutes[installIndex] = new InstallRoutes();
+            mInstallRoutes[installIndex].route = mDtvManager.getBroadcastRouteControl()
+                    .getInstallRoute(frontedDesc.getFrontendId(),
+                            DEMUX_ID_NOT_USED_WITH_COMEDIA);
+            mLog.d("[initializeRouteIds][GetInstallRoute] route: "
+                    + mInstallRoutes[installIndex].route);
+
+            mInstallRoutes[installIndex].frontend = frontedDesc;
+
+            // TODO
+            mInstallRoutes[installIndex].demux.setDemuxId(DEMUX_ID_NOT_USED_WITH_COMEDIA);
+
+            mLog.d("[initializeRouteIds][frontend descriptior " + frontendLoop + "/"
+                    + feNum + "][" + frontedDesc.getFrontendType() + "]");
+
+            installIndex++;
+        }
+
+        // 4) Live routes
+        int liveIndex = 0;
+        mLog.d("[initializeRouteIds][live routes]");
+        for (long frontendLoop = 0; frontendLoop < feNum; frontendLoop++) {
+            RouteFrontendDescriptor frontedDesc;
+            frontedDesc = mDtvManager.getBroadcastRouteControl().getFrontendDescriptor(
+                    (int) frontendLoop);
+
+            for (long decoderLoop = 0; decoderLoop < decNum; decoderLoop++) {
+                RouteDecoderDescriptor decoderDesc;
+                decoderDesc = mDtvManager.getCommonRouteControl().getDecoderDescriptor(
+                        (int) decoderLoop);
+
+                for (long outputLoop = 0; outputLoop < inputOutputNum; outputLoop++) {
+                    RouteInputOutputDescriptor outputDesc;
+                    outputDesc = mDtvManager.getCommonRouteControl().getInputOutputDescriptor(
+                            (int) outputLoop);
+
+                    mLiveRoutes[liveIndex] = new LiveRoutes();
+                    mLiveRoutes[liveIndex].route = mDtvManager.getBroadcastRouteControl()
+                            .getLiveRoute(
+                                    frontedDesc.getFrontendId(),
+                                    DEMUX_ID_NOT_USED_WITH_COMEDIA, decoderDesc.getDecoderId());
+                    mLiveRoutes[liveIndex].frontend = frontedDesc;
+                    mLiveRoutes[liveIndex].demux = new RouteDemuxDescriptor(
+                            DEMUX_ID_NOT_USED_WITH_COMEDIA);
+                    mLiveRoutes[liveIndex].decoder = decoderDesc;
+                    mLiveRoutes[liveIndex].output = outputDesc;
+
+                    mLog.d("[initializeRouteIds][Adding live route:" + frontedDesc.getFrontendId()
+                            + ", de:"
+                            + decoderDesc.getDecoderId() + ", out:" + outputDesc.getInputOutputId()
+                            + ", ro:" + mLiveRoutes[liveIndex].route + "]");
+
+                    liveIndex++;
                 }
             }
         }
-        if (mLiveRouteIp != EC_INVALID_ROUTE) {
-            if ((mLiveRouteCab != EC_INVALID_ROUTE || mLiveRouteSat != EC_INVALID_ROUTE
-                    || mLiveRouteTer != EC_INVALID_ROUTE)) {
-                isHybridTuner = true;
+
+        // 5. Record routes
+        int recordIndex = 0;
+        mLog.d("[initializeRouteIds][record routes]");
+        // iterate through all frontends
+        for (long frontendLoop = 0; frontendLoop < feNum; frontendLoop++) {
+
+            // create frontend descriptor
+            RouteFrontendDescriptor frontendDesc;
+            frontendDesc = mDtvManager.getBroadcastRouteControl()
+                    .getFrontendDescriptor((int) frontendLoop);
+
+            // iterate through all mass storages
+            for (long storageLoop = 0; storageLoop < storageNum; storageLoop++) {
+
+                // create mass storage descriptor
+                RouteMassStorageDescriptor massStorageDesc;
+                massStorageDesc = mDtvManager.getBroadcastRouteControl().getMassStorageDescriptor(
+                        (int) storageLoop
+                        );
+
+                // create record route
+                mRecordRoutes[recordIndex] = new RecordRoutes();
+                mRecordRoutes[recordIndex].route = mDtvManager.getBroadcastRouteControl()
+                        .getRecordRoute(
+                                frontendDesc.getFrontendId(),
+                                DEMUX_ID_NOT_USED_WITH_COMEDIA,
+                                massStorageDesc.getMassStorageId());
+
+                mRecordRoutes[recordIndex].frontend = frontendDesc;
+                mRecordRoutes[recordIndex].demux = new RouteDemuxDescriptor(
+                        DEMUX_ID_NOT_USED_WITH_COMEDIA);
+                mRecordRoutes[recordIndex].storage = massStorageDesc;
+
+                mLog.d("[initializeRouteIds][Adding record route ["
+                        + mRecordRoutes[recordIndex].route + "]:\n"
+                        + "\tfrontend=" + frontendDesc.getFrontendId() + "\n"
+                        + "\tmassStorage=" + massStorageDesc.getMassStorageId() + "\n"
+                        + "\tdemuxId=" + DEMUX_ID_NOT_USED_WITH_COMEDIA);
+
+                recordIndex++;
             }
         }
-    }
 
-    public int getCurrentInstallRoute() {
-        return mCurrentInstallRoute;
-    }
+        // 6. Playback routes
+        // create all posible playback route
 
-    /**
-     * Gets the current live route
-     *
-     * @return Current live route
-     */
-    public int getCurrentLiveRoute() {
-        return mCurrentLiveRoute;
-    }
+        int playbackIndex = 0;
+        mLog.d("[initializeRouteIds][playback routes]");
+        // iterate through all mass storages
+        for (long storageLoop = 0; storageLoop < storageNum; storageLoop++) {
 
-    /**
-     * Gets live route for IP tuner
-     *
-     * @return IP live route
-     */
-    public int getLiveRouteIp() {
-        return mLiveRouteIp;
-    }
+            // create mass storage (needed as input)
+            RouteMassStorageDescriptor massStorageDesc;
+            massStorageDesc = mDtvManager.getBroadcastRouteControl().getMassStorageDescriptor(
+                    (int) storageLoop);
 
-    /**
-     * Gets live route for CAB tuner
-     *
-     * @return CAB live route
-     */
-    public int getLiveRouteCab() {
-        return mLiveRouteCab;
-    }
+            // iterate througl all decoders
+            for (long decoderLoop = 0; decoderLoop < decNum; decoderLoop++) {
 
-    /**
-     * Gets live route for TER tuner
-     *
-     * @return TER live route
-     */
-    public int getLiveRouteTer() {
-        return mLiveRouteTer;
-    }
+                // create decoder
+                RouteDecoderDescriptor decoderDesc;
+                decoderDesc = mDtvManager.getCommonRouteControl().getDecoderDescriptor(
+                        (int) decoderLoop);
 
-    /**
-     * Gets live route for SAT tuner
-     *
-     * @return SAT live route
-     */
-    public int getLiveRouteSat() {
-        return mLiveRouteSat;
-    }
+                // iterate through all outputs
+                for (long outputLoop = 0; outputLoop < inputOutputNum; outputLoop++) {
 
-    /**
-     * Gets install route for IP tuner
-     *
-     * @return IP live route
-     */
-    public int getInstallRouteIp() {
-        return mInstallRouteIp;
-    }
+                    // create output
+                    RouteInputOutputDescriptor outputDesc;
+                    outputDesc = mDtvManager.getCommonRouteControl().getInputOutputDescriptor(
+                            (int) outputLoop);
 
-    /**
-     * Gets install route for CAB tuner
-     *
-     * @return CAB install route
-     */
-    public int getInstallRouteCab() {
-        return mInstallRouteCab;
-    }
+                    // create playback route
+                    mPlaybackRoutes[playbackIndex] = new PlaybackRoutes();
+                    mPlaybackRoutes[playbackIndex].route = mDtvManager.getBroadcastRouteControl()
+                            .getPlaybackRoute(
+                                    massStorageDesc.getMassStorageId(),
+                                    DEMUX_ID_NOT_USED_WITH_COMEDIA,
+                                    decoderDesc.getDecoderId());
 
-    /**
-     * Gets install route for TER tuner
-     *
-     * @return TER install route
-     */
-    public int getInstallRouteTer() {
-        return mInstallRouteTer;
-    }
+                    mPlaybackRoutes[playbackIndex].storage = massStorageDesc;
+                    mPlaybackRoutes[playbackIndex].demux = new RouteDemuxDescriptor(
+                            DEMUX_ID_NOT_USED_WITH_COMEDIA);
+                    mPlaybackRoutes[playbackIndex].decoder = decoderDesc;
+                    mPlaybackRoutes[playbackIndex].output = outputDesc;
 
-    /**
-     * Gets install route for SAT tuner
-     *
-     * @return SAT install route
-     */
-    public int getInstallRouteSat() {
-        return mInstallRouteSat;
-    }
+                    mLog.d("[initializeRouteIds][Adding playback route ["
+                            + mPlaybackRoutes[playbackIndex].route + "]:\n"
+                            + "\toutput: " + outputDesc.getInputOutputId() + "\n"
+                            + "\tmassStorage: " + massStorageDesc.getMassStorageId() + "\n"
+                            + "\tdecoderId: " + decoderDesc.getDecoderId() + "\n"
+                            + "\tdemuxId: " + DEMUX_ID_NOT_USED_WITH_COMEDIA);
 
-    /**
-     * Updates current live route
-     *
-     * @param route new live route
-     */
-    public void updateCurrentLiveRoute(int route) {
-        mCurrentLiveRoute = route;
-    }
+                    playbackIndex++;
+                }
+            }
+        }
 
-    /**
-     * Updates current live route
-     *
-     * @param route new live route
-     */
-    public void updateCurrentInstallRoute(int route) {
-        mCurrentInstallRoute = route;
+        InstallRoutes ipInstall = null, terInstall = null, ipPipInstall = null;
+        for (InstallRoutes install : mInstallRoutes) {
+            if (install.frontend.getFrontendType().contains(RouteFrontendType.TER)) {
+                terInstall = install;
+                continue;
+            }
+            if (install.frontend.getFrontendType().contains(RouteFrontendType.IP)) {
+                if (install.frontend.getFrontendId() == IP_FRONTEND) {
+                    ipInstall = install;
+                } else {
+                    ipPipInstall = install;
+                }
+                continue;
+            }
+        }
+
+        LiveRoutes ipPrimaryLive = null, terLive = null, ipPipLive = null, ipsecondaryLive = null;
+        for (LiveRoutes live : mLiveRoutes) {
+            if (terLive == null
+                    && live.frontend.getFrontendType().contains(RouteFrontendType.TER)) {
+                terLive = live;
+                continue;
+            }
+
+            if (live.frontend.getFrontendType().contains(RouteFrontendType.IP)) {
+                if (ipPrimaryLive == null) {
+                    ipPrimaryLive = live;
+                    continue;
+                } else {
+                    if (ipPrimaryLive.frontend.getFrontendId() != live.frontend.getFrontendId()
+                            && ipPrimaryLive.decoder.getDecoderId() != live.decoder.getDecoderId()) {
+                        if (ipPipLive == null) {
+                            ipPipLive = live;
+                            continue;
+                        } else if (ipsecondaryLive == null) {
+                            ipsecondaryLive = live;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        RecordRoutes ipPrimaryRecord = null, terRecord = null, ipPipRecord = null, ipsecondaryRecord = null;
+        for (RecordRoutes record : mRecordRoutes) {
+            if (terRecord == null
+                    && record.frontend.getFrontendType().contains(RouteFrontendType.TER)) {
+                terRecord = record;
+                continue;
+            }
+
+            if (record.frontend.getFrontendType().contains(RouteFrontendType.IP)) {
+                if (ipPrimaryRecord == null) {
+                    ipPrimaryRecord = record;
+                    continue;
+                } else {
+                    if (ipPrimaryRecord.frontend.getFrontendId() != record.frontend.getFrontendId()) {
+                        if (ipPipRecord == null) {
+                            ipPipRecord = record;
+                            continue;
+                        } else if (ipsecondaryRecord == null) {
+                            ipsecondaryRecord = record;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        PlaybackRoutes mainPlayback = null, pipPlayback = null;
+        for (PlaybackRoutes playback : mPlaybackRoutes) {
+            if (mainPlayback == null) {
+                mainPlayback = playback;
+                continue;
+            } else {
+                if (pipPlayback == null && mainPlayback.decoder != playback.decoder) {
+                    pipPlayback = playback;
+                }
+            }
+        }
+
+        // Merge live and scan routes
+        if (ipPrimaryLive == null || ipInstall == null || ipPrimaryRecord == null) {
+            mLog.e("[initializeRouteIds][IP primary live, scan or record routes are not found!]");
+        } else {
+            mLog.d("[initializeRouteIds][IP primary live, scan and recort routes are found.]["
+                    + ipPrimaryLive.route + "][" + ipInstall.route
+                    + "][" + ipPrimaryRecord.route + "]");
+        }
+        mIpPrimaryRoutes = new Routes(ipPrimaryLive, ipInstall, ipPrimaryRecord);
+
+        if (ipsecondaryLive == null || ipsecondaryRecord == null) {
+            mLog.e("[initializeRouteIds][IP secondary live or record routes are not found!]");
+        } else {
+            mLog.d("[initializeRouteIds][IP secondary live and recort routes are found.]["
+                    + ipsecondaryLive.route + "]["
+                    + ipsecondaryRecord.route + "]");
+        }
+        mIpSecondaryRoutes = new Routes(ipsecondaryLive, null, ipsecondaryRecord);
+
+        if (ipPipLive == null || ipPipInstall == null || ipPipRecord == null) {
+            mLog.e("[initializeRouteIds][IP PIP live, scan or record routes are not found!]");
+            mIpPipRoutes = new Routes(ipPipLive, ipPipInstall, ipPipRecord);
+        } else {
+            mLog.d("[initializeRouteIds][IP PIP live, scan and record routes found.]["
+                    + ipPipLive.route + "][" + ipPipInstall.route
+                    + "][" + ipPipRecord.route + "]");
+            mIpPipRoutes = new Routes(ipPipLive, ipPipInstall, ipPipRecord);
+            RouteLiveSettings settings = new RouteLiveSettings();
+            // TODO May break things
+            EnumSet<RouteComponentType> esVideo = EnumSet.noneOf(RouteComponentType.class);
+            esVideo.add(RouteComponentType.VIDEO);
+            settings.setComponentSettings(esVideo);
+            // TODO Get current video position?
+            settings.setVideoPosition(new VideoPosition());
+            mDtvManager.getBroadcastRouteControl().configureLiveRoute((int) ipPipLive.route,
+                    settings);
+        }
+
+        if (terLive == null || terInstall == null || terRecord == null) {
+            mLog.e("[initializeRouteIds][TER live(" + terLive + "), scan (" + terInstall
+                    + ") or record (" + terRecord + ") routes are not found!]");
+        } else {
+            mLog.d("[initializeRouteIds][TER live, scan and record routes are found.]["
+                    + terLive.route + "][" + terInstall.route + "]["
+                    + terRecord.route + "]");
+        }
+        mTerLiveRoutes = new Routes(terLive, terInstall, terRecord);
+
+        // Merge playback routes
+        if (mainPlayback == null) {
+            mLog.e("[initializeRouteIds][Playback main routes not found!]");
+        } else {
+            mLog.d("[initializeRouteIds][Playback main routes found.]["
+                    + mainPlayback.route + "]");
+            mPlaybackMainRoute = mainPlayback;
+        }
+
+        if (pipPlayback == null) {
+            mLog.e("[initializeRouteIds][Playback PIP routes not found!]");
+        } else {
+            mLog.d("[initializeRouteIds][Playback PIP routes found.]["
+                    + pipPlayback.route + "]");
+            mPlaybackPipRoute = pipPlayback;
+        }
+
+        return true;
     }
 
     /**
@@ -269,78 +448,44 @@ public class RouteManager {
      * @param sourceType Service type to check.
      * @return Desired route, or 0 if service type is undefined.
      */
-    public int getActiveRouteByServiceType(SourceType sourceType) {
+    public Routes getRouteByServiceType(SourceType sourceType) {
         switch (sourceType) {
-            case CAB:
-                return mLiveRouteCab;
             case TER:
-                return mLiveRouteTer;
-            case SAT:
-                return mLiveRouteSat;
+                return getTerRoute();
             case IP:
-                return mLiveRouteIp;
+                return getIpPrimaryRoute();
             case ANALOG:
             case PVR:
+            case SAT:
+            case CAB:
             case UNDEFINED:
             default:
-                return EC_INVALID_ROUTE;
+                return null;
         }
     }
 
-    /**
-     * Is IP and some other Tuner
-     *
-     * @return True if tuner type is IP and some other, false otherwise.
-     */
-    public boolean isHybridTuner() {
-        return isHybridTuner;
+
+    public Routes getIpPrimaryRoute() {
+        return mIpPrimaryRoutes;
     }
 
-    public String getInstallRouteDescription(int route) {
-        if (route == EC_INVALID_ROUTE) {
-            return "unknown route " + route;
-        }
-        if (route == mInstallRouteCab) {
-            return "cable " + route;
-        } else if (route == mInstallRouteTer) {
-            return "terrestrial " + route;
-        } else if (route == mInstallRouteSat) {
-            return "satellite " + route;
-        } else if (route == mInstallRouteIp) {
-            return "ip " + route;
-        } else {
-            return "unknown route " + route;
-        }
+    public Routes getIpSecondaryRoute() {
+        return mIpSecondaryRoutes;
     }
 
-    public String getLiveRouteDescription(int route) {
-        if (route == EC_INVALID_ROUTE) {
-            return "unknown route " + route;
-        }
-        if (route == mLiveRouteCab) {
-            return "cable " + route;
-        } else if (route == mLiveRouteTer) {
-            return "terrestrial " + route;
-        } else if (route == mLiveRouteSat) {
-            return "satellite " + route;
-        } else if (route == mLiveRouteIp) {
-            return "ip " + route;
-        } else {
-            return "unknown route " + route;
-        }
+    public Routes getTerRoute() {
+        return mTerLiveRoutes;
     }
 
-    private int getLiveRouteId(RouteFrontendDescriptor fDescriptor,
-            RouteDemuxDescriptor mDemuxDescriptor, RouteDecoderDescriptor mDecoderDescriptor,
-            RouteInputOutputDescriptor mOutputDescriptor, IBroadcastRouteControl routeControl) {
-        return routeControl.getLiveRoute(fDescriptor.getFrontendId(),
-                mDemuxDescriptor.getDemuxId(), mDecoderDescriptor.getDecoderId());
+    public Routes getIpPipRoute() {
+        return mIpPipRoutes;
     }
 
-    private int getInstallRouteId(RouteFrontendDescriptor fDescriptor,
-            RouteDemuxDescriptor mDemuxDescriptor, RouteDecoderDescriptor mDecoderDescriptor,
-            RouteInputOutputDescriptor mOutputDescriptor, IBroadcastRouteControl routeControl) {
-        return routeControl.getInstallRoute(fDescriptor.getFrontendId(),
-                mDemuxDescriptor.getDemuxId());
+    public PlaybackRoutes getPlaybackMainRoute() {
+        return mPlaybackMainRoute;
+    }
+
+    public PlaybackRoutes getPlaybackPipRoute() {
+        return mPlaybackPipRoute;
     }
 }

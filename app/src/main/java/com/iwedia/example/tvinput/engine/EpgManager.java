@@ -58,7 +58,7 @@ public class EpgManager {
     private void createWindow(TimeDate startTimeOfAcquisition, int durationInHours) {
         mLog.d("[prepareGetEpgEvents] start=" + startTimeOfAcquisition + " len=" + durationInHours);
         try {
-            int dtvServices = mDTVManager.getChannelManager().getDtvChannelListSize();
+            int dtvServices = mDTVManager.getChannelManager().getDtvChannelListSize(mDTVManager.getCurrentRoutes());
             ArrayList<Integer> masterListIndexes = new ArrayList<Integer>();
             mLog.d("[prepareGetEpgEvents] dtvServices=" + dtvServices);
             for (int i = 0; i < dtvServices; i++) {

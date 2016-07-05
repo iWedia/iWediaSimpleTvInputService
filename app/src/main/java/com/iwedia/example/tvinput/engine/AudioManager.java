@@ -22,7 +22,6 @@ public class AudioManager extends TrackManager<AudioTrack> {
 
     /** Audio control object */
     private IAudioControl mAudioControl;
-    private RouteManager mRouteManager;
 
     /**
      * Constructor
@@ -31,29 +30,28 @@ public class AudioManager extends TrackManager<AudioTrack> {
      */
     public AudioManager(IAudioControl audioControl) {
         this.mAudioControl = audioControl;
-        mRouteManager = DtvManager.getInstance().getRouteManager();
     }
 
     /**
      * Returns number of audio tracks for current channel.
      */
     @Override
-    public int getTrackCount() {
-        return mAudioControl.getAudioTrackCount(mRouteManager.getCurrentLiveRoute());
+    public int getTrackCount(int routeId) {
+        return mAudioControl.getAudioTrackCount(routeId);
     }
 
     /**
      * Returns audio track by index.
      */
     @Override
-    public AudioTrack getTrack(int index) {
-        return mAudioControl.getAudioTrack(mRouteManager.getCurrentLiveRoute(), index);
+    public AudioTrack getTrack(int routeId, int index) {
+        return mAudioControl.getAudioTrack(routeId, index);
     }
 
     /**
      * Sets audio track with desired index as active.
      */
-    public void setAudioTrack(int index) throws InternalException {
-        mAudioControl.setCurrentAudioTrack(mRouteManager.getCurrentLiveRoute(), index);
+    public void setAudioTrack(int routeId, int index) throws InternalException {
+        mAudioControl.setCurrentAudioTrack(routeId, index);
     }
 }

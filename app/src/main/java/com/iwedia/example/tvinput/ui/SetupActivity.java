@@ -21,6 +21,7 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import com.iwedia.dtv.route.broadcast.routemanager.Routes;
 import com.iwedia.dtv.scan.IScanCallback;
 import com.iwedia.dtv.scan.ScanInstallStatus;
 import com.iwedia.dtv.types.InternalException;
@@ -51,6 +52,7 @@ public class SetupActivity extends Activity implements IScanCallback {
     private enum ScanState {
         IDLE, SCANNING
     }
+
 
     private static ScanState mScanState;
 
@@ -141,19 +143,13 @@ public class SetupActivity extends Activity implements IScanCallback {
                 }
 
                 mRouteManager = mDtvManager.getRouteManager();
-                (mDtvManager.getDtvManager().getScanControl()).registerCallback(this);
+                mDtvManager.getDtvManager().getScanControl().registerCallback(SetupActivity.this);
 
-                String subtitleText = "Available install frontends:";
-                if (mRouteManager.getInstallRouteCab() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "cable";
-                }
-                if (mRouteManager.getInstallRouteTer() != RouteManager.EC_INVALID_ROUTE) {
+                String subtitleText = mSubtitle.getText().toString();
+                if (mDtvManager.getRouteManager().getTerRoute().getInstallRoute() != null) {
                     subtitleText += "\n" + "terrestrial";
                 }
-                if (mRouteManager.getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "satellite";
-                }
-                if (mRouteManager.getInstallRouteIp() != RouteManager.EC_INVALID_ROUTE) {
+                if (mDtvManager.getRouteManager().getIpPrimaryRoute().getInstallRoute() != null) {
                     subtitleText += "\n" + "IP";
                 }
                 mSubtitle.setText(mSubtitleText);
@@ -195,54 +191,40 @@ public class SetupActivity extends Activity implements IScanCallback {
 
     @Override
     public void antennaConnected(int routeId, boolean state) {
-        mLog.d("[antennaConnected]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][connected: " + state + "]");
+        mLog.d("[antennaConnected][routeId:"+routeId+"][connected: " + state + "]");
     }
 
     @Override
     public void installServiceDATAName(int routeId, String name) {
-        mLog.d("[installServiceDATAName]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][name: " + name + "]");
+        mLog.d("[installServiceDATAName][routeId:"+routeId+"][name: " + name + "]");
         mHandler.sendEmptyMessage(ON_NEW_CHANNEL_FOUND);
     }
 
     @Override
     public void installServiceDATANumber(int routeId, int name) {
-        mLog.d("[installServiceDATANumber]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][name: " + name + "]");
+        mLog.d("[installServiceDATANumber][routeId:"+routeId+"][name: " + name + "]");
     }
 
     @Override
     public void installServiceRADIOName(int routeId, String name) {
-        mLog.d("[installServiceRADIOName]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][name: " + name + "]");
+        mLog.d("[installServiceRADIOName][routeId:"+routeId+"][name: " + name + "]");
         mHandler.sendEmptyMessage(ON_NEW_CHANNEL_FOUND);
     }
 
     @Override
     public void installServiceRADIONumber(int routeId, int name) {
-        mLog.d("[installServiceRADIONumber]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][name: " + name + "]");
+        mLog.d("[installServiceRADIONumber][routeId:"+routeId+"][name: " + name + "]");
     }
 
     @Override
     public void installServiceTVName(int routeId, String name) {
-        mLog.d("[installServiceTVName]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][name: " + name + "]");
+        mLog.d("[installServiceTVName][routeId:"+routeId+"][name: " + name + "]");
         mHandler.sendEmptyMessage(ON_NEW_CHANNEL_FOUND);
     }
 
     @Override
     public void installServiceTVNumber(int routeId, int name) {
-        mLog.d("[installServiceTVNumber]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][name: " + name + "]");
+        mLog.d("[installServiceTVNumber][routeId:"+routeId+"][name: " + name + "]");
     }
 
     @Override
@@ -257,16 +239,19 @@ public class SetupActivity extends Activity implements IScanCallback {
 
     @Override
     public void sat2ipServerDropped(int routeId) {
-        mLog.d("[sat2ipServerDropped]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "]");
+        mLog.d("[sat2ipServerDropped][routeId:"+routeId+"]");
     }
 
     @Override
     public void scanFinished(int routeId) {
-        mLog.d("[scanFinished]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "]");
-        mDtvManager.getChannelManager().refreshChannelList();
-        onClickScanAction(null);
+        mLog.d("[scanFinished][routeId:"+routeId+"]");
+        Routes routes = mDtvManager.getCurrentRoutes();
+        mDtvManager.getChannelManager().refreshChannelList(routes);
+        if (ExampleSwitches.ENABLE_IWEDIA_EMU == true) {
+
+        } else {
+            onClickScanAction(null);
+        }
         // Send an intent to application that is safe to pull channels from TIF
         // database
         Intent intent = new Intent(
@@ -276,49 +261,37 @@ public class SetupActivity extends Activity implements IScanCallback {
 
     @Override
     public void scanNoServiceSpace(int routeId) {
-        mLog.d("[scanFinished]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "]");
+        mLog.d("[scanFinished][routeId:"+routeId+"]");
     }
 
     @Override
     public void scanProgressChanged(int routeId, int value) {
-        mLog.d("[scanProgressChanged]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][progres: " + value + "]");
+        mLog.d("[scanProgressChanged][routeId:"+routeId+"]");
         mProgressBar.setProgress(value);
     }
 
     @Override
     public void scanTunFrequency(int routeId, int frequency) {
-        mLog.d("[scanTunFrequency]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][frequency: " + frequency + "]");
+        mLog.d("[scanTunFrequency][routeId:"+routeId+"][frequency: " + frequency + "]");
     }
 
     @Override
     public void signalBer(int routeId, int ber) {
-        mLog.d("[signalBer]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "][ber: "
-                + ber + "]");
+        mLog.d("[signalBer][routeId:"+routeId+"]");
     }
 
     @Override
     public void signalQuality(int routeId, int quality) {
-        mLog.d("[signalQuality]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][quality: " + quality + "]");
+        mLog.d("[signalQuality][routeId:"+routeId+"][quality: " + quality + "]");
     }
 
     @Override
     public void signalStrength(int routeId, int strength) {
-        mLog.d("[signalStrength]["
-                + mRouteManager.getInstallRouteDescription(routeId)
-                + "][strength: " + strength + "]");
+        mLog.d("[signalStrength][routeId:"+routeId+"][strength: " + strength + "]");
     }
 
     @Override
     public void triggerStatus(int routeId) {
-        mLog.d("[triggerStatus]["
-                + mRouteManager.getInstallRouteDescription(routeId) + "]");
+        mLog.d("[triggerStatus][routeId:"+routeId+"]");
     }
 }
