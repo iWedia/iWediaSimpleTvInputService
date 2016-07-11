@@ -113,43 +113,12 @@ public class SetupActivity extends Activity implements IScanCallback {
             }
         };
 
-        Thread mwInitThread = new Thread() {
-            @Override
-            public void run() {
-                super.run();
-                // ! blocking call
-                DtvManager.instantiate(SetupActivity.this);
-                mDtvManager = DtvManager.getInstance();
-
-                mRouteManager = mDtvManager.getRouteManager();
-                mDtvManager.getDtvManager().getScanControl().registerCallback(SetupActivity.this);
-
-                String subtitleText = mSubtitle.getText().toString();
-                if (mDtvManager.getRouteManager().getInstallRouteCab() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "cable";
-                }
-                if (mDtvManager.getRouteManager().getInstallRouteTer() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "terrestrial";
-                }
-                if (mDtvManager.getRouteManager().getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "satellite";
-                }
-                if (mDtvManager.getRouteManager().getInstallRouteIp() != RouteManager.EC_INVALID_ROUTE) {
-                    subtitleText += "\n" + "IP";
-                }
-                Message msg = new Message();
-                msg.what = ON_INIT_TEXT;
-                msg.obj = subtitleText;
-                mHandler.sendMessage(msg);
-            }
-        };
-        mwInitThread.start();
+        // ! In same time TvService will be created by system
+        // ! TvService will wait and bind to MW service
 
         mScanState = ScanState.IDLE;
 
         mLocker = new Object();
-
-        setResult(Activity.RESULT_OK);
     }
 
     public void onDestroy() {
@@ -163,6 +132,37 @@ public class SetupActivity extends Activity implements IScanCallback {
         mLog.d("[onClickScanAction][" + mScanState + "][" + (view == null) + "]");
         switch (mScanState) {
             case IDLE:
+                mDtvManager = DtvManager.getInstance();
+                if (mDtvManager == null) {
+                    mSubtitleText = mSubtitle.getText().toString();
+                    mSubtitleText += "\n" + "MW not ready, try again";
+                    mSubtitle.setText(mSubtitleText);
+                    return;
+                }
+
+                mRouteManager = mDtvManager.getRouteManager();
+                (mDtvManager.getDtvManager().getScanControl()).registerCallback(this);
+
+                String subtitleText = "Available install frontends:";
+                if (mRouteManager.getInstallRouteCab() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "cable";
+                }
+                if (mRouteManager.getInstallRouteTer() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "terrestrial";
+                }
+                if (mRouteManager.getInstallRouteSat() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "satellite";
+                }
+                if (mRouteManager.getInstallRouteIp() != RouteManager.EC_INVALID_ROUTE) {
+                    subtitleText += "\n" + "IP";
+                }
+                mSubtitle.setText(mSubtitleText);
+
+                Message msg = new Message();
+                msg.what = ON_INIT_TEXT;
+                msg.obj = subtitleText;
+                mHandler.sendMessage(msg);
+
                 mHandler.sendEmptyMessage(ON_SCAN_START);
                 mChannelCounter = 0;
 
@@ -188,6 +188,7 @@ public class SetupActivity extends Activity implements IScanCallback {
                     mSubtitleText += "\n" + "scan aborted";
                     mSubtitle.setText(mSubtitleText);
                 }
+                mScanState = ScanState.IDLE;
                 break;
         }
     }
@@ -265,11 +266,7 @@ public class SetupActivity extends Activity implements IScanCallback {
         mLog.d("[scanFinished]["
                 + mRouteManager.getInstallRouteDescription(routeId) + "]");
         mDtvManager.getChannelManager().refreshChannelList();
-        if (ExampleSwitches.ENABLE_IWEDIA_EMU == true) {
-
-        } else {
-            onClickScanAction(null);
-        }
+        onClickScanAction(null);
         // Send an intent to application that is safe to pull channels from TIF
         // database
         Intent intent = new Intent(
