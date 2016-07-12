@@ -23,6 +23,11 @@ import com.iwedia.example.tvinput.engine.DtvManager;
 import com.iwedia.example.tvinput.utils.Logger;
 
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.util.Enumeration;
 
 public class EmulatorEngine implements IServiceCallback {
 
@@ -48,7 +53,14 @@ public class EmulatorEngine implements IServiceCallback {
 
         DtvManager.getInstance().getDtvManager().getServiceControl().registerCallback(this);
 
-        mVideoFileUri = Uri.parse("http://iwedia_androidx86-10.0.2.15:4567");
+        String localUri = "http://iwedia_androidx86-10.0.2.15:4567";
+        String localIpAddress = getLocalIpAddress();
+        if (localIpAddress != null) {
+            this.mLog.d("LocalIpAddress is " + localIpAddress);
+            localUri = "http://iwedia_androidx86-" + localIpAddress + ":4567";
+        }
+        mVideoFileUri = Uri.parse(localUri);
+        
         try {
             mPlayer.setDataSource(context, mVideoFileUri);
             mHander.postDelayed(mSurfaceGetter, C_SURFACE_GETTER_REFRESH_TIME);
@@ -62,6 +74,25 @@ public class EmulatorEngine implements IServiceCallback {
             e.printStackTrace();
         }
     }
+
+    public static String getLocalIpAddress() {
+        try {
+            for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements(); ) {
+                NetworkInterface intf = en.nextElement();
+                for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements(); ) {
+                    InetAddress inetAddress = enumIpAddr.nextElement();
+                    if (!inetAddress.isLoopbackAddress() && inetAddress instanceof Inet4Address) {
+                        return inetAddress.getHostAddress();
+                    }
+                }
+            }
+        } catch (SocketException ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+
+
 
     private Runnable mSurfaceGetter = new Runnable() {
 
