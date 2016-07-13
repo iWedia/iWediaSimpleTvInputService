@@ -8,6 +8,7 @@
  * KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  */
+
 package com.iwedia.example.tvinput;
 
 import android.content.BroadcastReceiver;
@@ -18,7 +19,6 @@ import android.graphics.PixelFormat;
 import android.media.tv.TvInputManager;
 import android.media.tv.TvInputService;
 import android.os.RemoteException;
-import android.os.Handler;
 import android.view.WindowManager;
 
 import com.iwedia.dtv.service.IServiceCallback;
@@ -32,31 +32,22 @@ import java.util.Hashtable;
 /**
  * Main class for iWedia TV Input Service
  */
-public class TvService extends TvInputService implements
-        ITvSession, IServiceCallback {
+public class TvService extends TvInputService implements ITvSession {
 
     /** App name is used to help with logcat output filtering */
     public static final String APP_NAME = "iWediaTvInput_";
+
     /** Object used to write to logcat output */
-    private final Logger mLog = new Logger(APP_NAME + TvService.class.getSimpleName(),
-            Logger.ERROR);
+
+    private final Logger mLog = new Logger(APP_NAME + TvService.class.getSimpleName(), Logger.ERROR);
+
     /** DVB manager instance. */
     protected DtvManager mDtvManager = null;
     /** List of all TVSessions */
     private Hashtable<String, TvSession> mSessionTable;
     private TvSession mCurrentSession = null;
 
-    private BroadcastReceiver mContentRatingReceiver = null;
-
-    @Override
-    public void onCreate() {
-        mLog.d("[onCreateService]");
-
-        super.onCreate();
-
-        mSessionTable = new Hashtable<String, TvSession>();
-
-        mContentRatingReceiver = new BroadcastReceiver() {
+    private BroadcastReceiver mContentRatingReceiver = new BroadcastReceiver() {
 
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -64,8 +55,7 @@ public class TvService extends TvInputService implements
             if (mCurrentSession == null) {
                 return;
             }
-            if (intent.getAction().equals(
-                    TvInputManager.ACTION_BLOCKED_RATINGS_CHANGED)) {
+            if (intent.getAction().equals(TvInputManager.ACTION_BLOCKED_RATINGS_CHANGED)) {
                 mCurrentSession.checkContentRating();
             } else if (intent.getAction().equals(
                     TvInputManager.ACTION_PARENTAL_CONTROLS_ENABLED_CHANGED)) {
@@ -73,6 +63,12 @@ public class TvService extends TvInputService implements
             }
         }
     };
+
+    @Override
+    public void onCreate() {
+        mLog.d("[onCreateService]");
+        super.onCreate();
+        mSessionTable = new Hashtable<String, TvSession>();
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(TvInputManager.ACTION_BLOCKED_RATINGS_CHANGED);
@@ -86,7 +82,6 @@ public class TvService extends TvInputService implements
                 // ! blocking call
                 DtvManager.instantiate(TvService.this);
                 mDtvManager = DtvManager.getInstance();
-                mDtvManager.getDtvManager().getServiceControl().registerCallback(TvService.this);
             }
         };
         mwInitThread.start();
@@ -96,13 +91,8 @@ public class TvService extends TvInputService implements
     public void onDestroy() {
         mLog.d("[onDestroyService]");
         super.onDestroy();
-
-        mDtvManager.getDtvManager().getServiceControl().unregisterCallback(this);
         mDtvManager.deinit();
-
-        if (mContentRatingReceiver != null) {
-            unregisterReceiver(mContentRatingReceiver);
-        }
+        unregisterReceiver(mContentRatingReceiver);
     }
 
     @Override
@@ -147,43 +137,8 @@ public class TvService extends TvInputService implements
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                            | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                    PixelFormat.OPAQUE);
+                            | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.OPAQUE);
             manager.addView(mCurrentSession.onCreateOverlayView(), params);
         }
-    }
-
-    @Override
-    public void channelChangeStatus(int routeId, boolean channelChanged) {
-        mLog.d("[channelChangeStatus]");
-        if (mCurrentSession != null) {
-            mCurrentSession.updateTracks();
-        }
-    }
-
-    @Override
-    public void safeToUnblank(int routeId) {
-        mLog.d("[safeToUnblank]");
-    }
-
-    @Override
-    public void serviceScrambledStatus(int routeId, boolean serviceScrambled) {
-        mLog.d("[serviceScrambledStatus]");
-    }
-
-    @Override
-    public void serviceStopped(int routeId, boolean serviceStopped) {
-        mLog.d("[serviceStopped]");
-    }
-
-    @Override
-    public void signalStatus(int routeId, boolean signalAvailable) {
-        mLog.d("[signalStatus]");
-    }
-
-    @Override
-    public void updateServiceList(ServiceListUpdateData serviceListUpdateData) {
-        mLog.d("[updateServiceList][service list update date: "
-                + serviceListUpdateData + "]");
     }
 }

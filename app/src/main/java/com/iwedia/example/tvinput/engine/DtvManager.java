@@ -109,7 +109,7 @@ public class DtvManager {
     /** Video destination rectangle */
     private final Rect mVideoRect = new Rect();
 
-    private static CheckMiddlewareAsyncTask mCheckMw = new CheckMiddlewareAsyncTask();
+    private static CheckMiddlewareAsyncTask mCheckMw;
 
     private static MwRunningState mMwRunningState = MwRunningState.UNKNOWN;
 
@@ -142,6 +142,7 @@ public class DtvManager {
                         mMwClientWaitingCounter = 0;
                     }
                     mMwRunningState = MwRunningState.NOT_RUNNING;
+                    mCheckMw = new CheckMiddlewareAsyncTask();
                     mCheckMw.execute();
                 case NOT_RUNNING:
                     synchronized (mMwClientWaitingCounterLocker) {
@@ -156,7 +157,7 @@ public class DtvManager {
                     }
                     break;
                 case RUNNING:
-                    //
+                    mLog.d("[instantiate][already running]");
                     break;
             }
         }
@@ -516,7 +517,7 @@ public class DtvManager {
             super();
 
             mWaitCycle = 1000;
-            mWaitCounter = 10;
+            mWaitCounter = 100;
         }
 
         @Override
@@ -539,6 +540,7 @@ public class DtvManager {
                         mLog.d("[CheckMiddlewareAsyncTask][doInBackground][timeout 10 seconds, mw not started]");
                         break;
                     }
+                    mLog.d("[CheckMiddlewareAsyncTask][doInBackground][wait for MW service][" + mWaitCounter + "]");
                     mWaitCounter--;
                 }
             }
