@@ -101,6 +101,7 @@ public class SetupActivity extends Activity implements IScanCallback {
                         mSubtitle.setText(mSubtitleText);
                         break;
                     case ON_SCAN_COMPLETED:
+                        mScanState = ScanState.IDLE;
                         mScanAction.setText(R.string.tif_setup_start);
                         mProgressBar.setVisibility(View.INVISIBLE);
                         // scan completed
@@ -187,7 +188,6 @@ public class SetupActivity extends Activity implements IScanCallback {
                     mSubtitleText += "\n" + "scan aborted";
                     mSubtitle.setText(mSubtitleText);
                 }
-                mScanState = ScanState.IDLE;
                 break;
         }
     }
