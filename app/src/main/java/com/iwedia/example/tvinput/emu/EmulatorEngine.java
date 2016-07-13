@@ -53,7 +53,7 @@ public class EmulatorEngine implements IServiceCallback {
 
         DtvManager.getInstance().getDtvManager().getServiceControl().registerCallback(this);
 
-        String localUri = "http://iwedia_androidx86-10.0.2.15:4567";
+        String localUri = "http://iwedia_androidx86-localhost:4567";
         String localIpAddress = getLocalIpAddress();
         if (localIpAddress != null) {
             this.mLog.d("LocalIpAddress is " + localIpAddress);
