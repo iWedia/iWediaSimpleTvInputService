@@ -47,6 +47,8 @@ public class RouteManager {
     private Routes mIpSecondaryRoutes = null;
     private Routes mIpPipRoutes = null;
     private Routes mTerLiveRoutes = null;
+    private Routes mCabLiveRoutes = null;
+    private Routes mSatLiveRoutes = null;
 
     private PlaybackRoutes mPlaybackMainRoute = null;
     private PlaybackRoutes mPlaybackPipRoute = null;
@@ -77,7 +79,7 @@ public class RouteManager {
 
     /**
      * Initialize routes.
-     * 
+     *
      * @return true if routes initialized correctly, false otherwise
      * @throws RemoteException
      */
@@ -213,7 +215,7 @@ public class RouteManager {
                 RouteMassStorageDescriptor massStorageDesc;
                 massStorageDesc = mDtvManager.getBroadcastRouteControl().getMassStorageDescriptor(
                         (int) storageLoop
-                        );
+                );
 
                 // create record route
                 mRecordRoutes[recordIndex] = new RecordRoutes();
@@ -293,10 +295,23 @@ public class RouteManager {
             }
         }
 
-        InstallRoutes ipInstall = null, terInstall = null, ipPipInstall = null;
+
+        //Go through all install, live, record and playback
+        // routes, check routes type
+
+        InstallRoutes ipInstall = null, terInstall = null, ipPipInstall = null,
+                cabInstall = null, satInstall = null;
         for (InstallRoutes install : mInstallRoutes) {
             if (install.frontend.getFrontendType().contains(RouteFrontendType.TER)) {
                 terInstall = install;
+                continue;
+            }
+            if (install.frontend.getFrontendType().contains(RouteFrontendType.CAB)) {
+                cabInstall = install;
+                continue;
+            }
+            if (install.frontend.getFrontendType().contains(RouteFrontendType.SAT)) {
+                satInstall = install;
                 continue;
             }
             if (install.frontend.getFrontendType().contains(RouteFrontendType.IP)) {
@@ -309,11 +324,24 @@ public class RouteManager {
             }
         }
 
-        LiveRoutes ipPrimaryLive = null, terLive = null, ipPipLive = null, ipsecondaryLive = null;
+        LiveRoutes ipPrimaryLive = null, terLive = null, ipPipLive = null,
+                ipsecondaryLive = null, cabLive = null, satLive = null;
         for (LiveRoutes live : mLiveRoutes) {
             if (terLive == null
                     && live.frontend.getFrontendType().contains(RouteFrontendType.TER)) {
                 terLive = live;
+                continue;
+            }
+
+            if (cabLive == null
+                    && live.frontend.getFrontendType().contains(RouteFrontendType.CAB)) {
+                cabLive = live;
+                continue;
+            }
+
+            if (satLive == null
+                    && live.frontend.getFrontendType().contains(RouteFrontendType.SAT)) {
+                satLive = live;
                 continue;
             }
 
@@ -336,11 +364,22 @@ public class RouteManager {
             }
         }
 
-        RecordRoutes ipPrimaryRecord = null, terRecord = null, ipPipRecord = null, ipsecondaryRecord = null;
+        RecordRoutes ipPrimaryRecord = null, terRecord = null, ipPipRecord = null, ipsecondaryRecord = null,
+                satRecord = null, cabRecord = null;
         for (RecordRoutes record : mRecordRoutes) {
             if (terRecord == null
                     && record.frontend.getFrontendType().contains(RouteFrontendType.TER)) {
                 terRecord = record;
+                continue;
+            }
+            if (cabRecord == null
+                    && record.frontend.getFrontendType().contains(RouteFrontendType.CAB)) {
+                cabRecord = record;
+                continue;
+            }
+            if (satRecord == null
+                    && record.frontend.getFrontendType().contains(RouteFrontendType.SAT)) {
+                satRecord = record;
                 continue;
             }
 
@@ -374,7 +413,9 @@ public class RouteManager {
             }
         }
 
+
         // Merge live and scan routes
+        // Create Route objects
         if (ipPrimaryLive == null || ipInstall == null || ipPrimaryRecord == null) {
             mLog.e("[initializeRouteIds][IP primary live, scan or record routes are not found!]");
         } else {
@@ -421,6 +462,27 @@ public class RouteManager {
                     + terRecord.route + "]");
         }
         mTerLiveRoutes = new Routes(terLive, terInstall, terRecord);
+
+        if (cabLive == null || cabInstall == null || cabRecord == null) {
+            mLog.e("[initializeRouteIds][CAB live(" + cabLive + "), scan (" + cabInstall
+                    + ") or record (" + cabRecord + ") routes are not found!]");
+        } else {
+            mLog.d("[initializeRouteIds][CAB live, scan and record routes are found.]["
+                    + cabLive.route + "][" + cabInstall.route + "]["
+                    + cabRecord.route + "]");
+        }
+        mCabLiveRoutes = new Routes(cabLive, cabInstall, cabRecord);
+
+        if (satLive == null || satInstall == null || satRecord == null) {
+            mLog.e("[initializeRouteIds][SAT live(" + satLive + "), scan (" + satInstall
+                    + ") or record (" + satRecord + ") routes are not found!]");
+        } else {
+            mLog.d("[initializeRouteIds][SAT live, scan and record routes are found.]["
+                    + satLive.route + "][" + satInstall.route + "]["
+                    + satRecord.route + "]");
+        }
+        mSatLiveRoutes = new Routes(satLive, satInstall, satRecord);
+
 
         // Merge playback routes
         if (mainPlayback == null) {
@@ -476,6 +538,15 @@ public class RouteManager {
     public Routes getTerRoute() {
         return mTerLiveRoutes;
     }
+
+    public Routes getCabRoute() {
+        return mCabLiveRoutes;
+    }
+
+    public Routes getSatRoute() {
+        return mSatLiveRoutes;
+    }
+
 
     public Routes getIpPipRoute() {
         return mIpPipRoutes;
