@@ -62,7 +62,7 @@ public class EpgFull extends EpgRunnable {
 
     @Override
     public void run() {
-        int channelListSize = mDtvManager.getChannelManager().getDtvChannelListSize();
+        int channelListSize = mDtvManager.getChannelManager().getDtvChannelListSize(mDtvManager.getCurrentRoutes());
         TimeDate startTime = mDtvManager.getEpgManager().getWindowStartTime();
         TimeDate endTime = mDtvManager.getEpgManager().getWindowEndTime();
         mLog.d("[run][start time: " + startTime + "]");

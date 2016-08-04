@@ -10,6 +10,7 @@
  */
 package com.iwedia.example.tvinput.engine;
 
+import com.iwedia.dtv.route.broadcast.routemanager.Routes;
 import com.iwedia.dtv.subtitle.ISubtitleControl;
 import com.iwedia.dtv.subtitle.SubtitleMode;
 import com.iwedia.dtv.subtitle.SubtitleTrack;
@@ -25,7 +26,6 @@ public class SubtitleManager extends TrackManager<SubtitleTrack> {
     private ISubtitleControl mSubtitleControl;
     /** Flags that shows teletext and subtitle status */
     private boolean mSubtitleActive = false;
-    private RouteManager mRouteManager;
 
     /**
      * Constructor
@@ -34,7 +34,6 @@ public class SubtitleManager extends TrackManager<SubtitleTrack> {
      */
     public SubtitleManager(ISubtitleControl subtitleControl) {
         mSubtitleControl = subtitleControl;
-        mRouteManager = DtvManager.getInstance().getRouteManager();
     }
 
     /**
@@ -61,10 +60,10 @@ public class SubtitleManager extends TrackManager<SubtitleTrack> {
      * @return True if subtitle is started, false otherwise.
      * @throws InternalException
      */
-    public boolean showSubtitles(int trackIndex) throws InternalException {
-        mSubtitleControl.setCurrentSubtitleTrack(mRouteManager.getCurrentLiveRoute(), trackIndex);
+    public boolean showSubtitles(int routeId, int trackIndex) throws InternalException {
+        mSubtitleControl.setCurrentSubtitleTrack(routeId, trackIndex);
         if (mSubtitleControl
-                .getCurrentSubtitleTrackIndex(mRouteManager.getCurrentLiveRoute()) >= 0) {
+                .getCurrentSubtitleTrackIndex(routeId) >= 0) {
             mSubtitleActive = true;
         }
         return mSubtitleActive;
@@ -75,10 +74,10 @@ public class SubtitleManager extends TrackManager<SubtitleTrack> {
      *
      * @throws InternalException
      */
-    public void hideSubtitles() throws InternalException {
-        mSubtitleControl.deselectCurrentSubtitleTrack(mRouteManager.getCurrentLiveRoute());
+    public void hideSubtitles(int routeId) throws InternalException {
+        mSubtitleControl.deselectCurrentSubtitleTrack(routeId);
         if (mSubtitleControl
-                .getCurrentSubtitleTrackIndex(mRouteManager.getCurrentLiveRoute()) < 0) {
+                .getCurrentSubtitleTrackIndex(routeId) < 0) {
             mSubtitleActive = false;
         }
     }
@@ -87,8 +86,8 @@ public class SubtitleManager extends TrackManager<SubtitleTrack> {
      * Returns subtitle track by index.
      */
     @Override
-    public SubtitleTrack getTrack(int index) {
-        return mSubtitleControl.getSubtitleTrack(mRouteManager.getCurrentLiveRoute(), index);
+    public SubtitleTrack getTrack(int routeId, int index) {
+        return mSubtitleControl.getSubtitleTrack(routeId, index);
     }
 
     /**
@@ -97,16 +96,15 @@ public class SubtitleManager extends TrackManager<SubtitleTrack> {
      * @return Number of subtitle tracks.
      */
     @Override
-    public int getTrackCount() {
-        return mSubtitleControl.getSubtitleTrackCount(mRouteManager.getCurrentLiveRoute());
+    public int getTrackCount(int routeId) {
+        return mSubtitleControl.getSubtitleTrackCount(routeId);
     }
 
     /**
      * Returns TRUE if subtitle is active, FALSE otherwise.
      */
-    public boolean isSubtitleActive() {
-        mSubtitleActive = mSubtitleControl.getCurrentSubtitleTrackIndex(mRouteManager
-                .getCurrentLiveRoute()) >= 0;
+    public boolean isSubtitleActive(int routeId) {
+        mSubtitleActive = mSubtitleControl.getCurrentSubtitleTrackIndex(routeId) >= 0;
         return mSubtitleActive;
     }
 }

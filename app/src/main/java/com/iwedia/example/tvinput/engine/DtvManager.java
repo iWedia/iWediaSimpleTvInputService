@@ -10,9 +10,7 @@
  */
 package com.iwedia.example.tvinput.engine;
 
-import android.app.AlarmManager;
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.os.AsyncTask;
@@ -20,12 +18,12 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.RemoteException;
 import android.os.SystemProperties;
-import android.provider.Settings;
 import android.view.WindowManager;
 
 import com.iwedia.dtv.dtvmanager.DTVManager;
 import com.iwedia.dtv.dtvmanager.IDTVManager;
 import com.iwedia.dtv.epg.IEpgControl;
+import com.iwedia.dtv.route.broadcast.routemanager.Routes;
 import com.iwedia.dtv.service.Service;
 import com.iwedia.dtv.service.ServiceDescriptor;
 import com.iwedia.dtv.types.InternalException;
@@ -40,8 +38,6 @@ import com.iwedia.example.tvinput.utils.Logger;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Calendar;
-import java.util.Date;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -109,7 +105,13 @@ public class DtvManager {
     /** Video destination rectangle */
     private final Rect mVideoRect = new Rect();
 
-    private static CheckMiddlewareAsyncTask mCheckMw;
+    /* Current route used for playback */
+    private Routes mCurrentRoutes = null;
+
+    /* Current route used for pip playback */
+    private Routes mCurrentPipRoutes = null;
+
+    private static CheckMiddlewareAsyncTask mCheckMw = new CheckMiddlewareAsyncTask();
 
     private static MwRunningState mMwRunningState = MwRunningState.UNKNOWN;
 
@@ -118,6 +120,8 @@ public class DtvManager {
     private static int mMwClientWaitingCounter;
 
     private static Object mMwClientWaitingCounterLocker = new Object();
+
+
 
     /**
      * Gets an instance of this manager
@@ -176,6 +180,7 @@ public class DtvManager {
         Point size = new Point();
         wm.getDefaultDisplay().getSize(size);
         mVideoRect.set(0, 0, size.x, size.y);
+        mCurrentRoutes = new Routes(null, null, null);
     }
 
     /**
@@ -206,7 +211,7 @@ public class DtvManager {
      * @throws InternalException
      */
     private void initializeDtvFunctionality() throws RemoteException {
-        mRouteManager = new RouteManager();
+        mRouteManager = new RouteManager(mDtvManager);
         mSubtitleManager = new SubtitleManager(mDtvManager.getSubtitleControl());
         mAudioManager = new AudioManager(mDtvManager.getAudioControl());
         mChannelManager = new ChannelManager(sInstance, mContext);
@@ -237,10 +242,10 @@ public class DtvManager {
      */
     public void stop() throws InternalException {
         mLog.d("[stop]");
-        if (mSubtitleManager.isSubtitleActive()) {
-            mSubtitleManager.hideSubtitles();
+        if (mSubtitleManager.isSubtitleActive(mCurrentRoutes.getLiveRouteID())) {
+            mSubtitleManager.hideSubtitles(mCurrentRoutes.getLiveRouteID());
         }
-        mDtvManager.getServiceControl().stopService(mRouteManager.getCurrentLiveRoute());
+        mDtvManager.getServiceControl().stopService(mRouteManager.getIpPrimaryRoute().getLiveRouteID());
     }
 
     /**
@@ -276,14 +281,13 @@ public class DtvManager {
         TvSession.mEmulatorEngine.stop();
 
         // 2) Start DVB channel
-        int route = mRouteManager.getActiveRouteByServiceType(channel.getType());
-        if (route == RouteManager.EC_INVALID_ROUTE) {
+        mCurrentRoutes = mRouteManager.getRouteByServiceType(channel.getType());
+        if ((mCurrentRoutes == null) || (mCurrentRoutes.getLiveRoute() == null)) {
             mLog.e("[startDvbOnEmulator][unknown source type: " + channel.getType() + "]");
             return false;
         }
         mCurrentlyActiveChannel = channel.getServiceId();
-        mRouteManager.updateCurrentLiveRoute(route);
-        mDtvManager.getServiceControl().startService(route, MASTER_LIST_INDEX,
+        mDtvManager.getServiceControl().startService(mCurrentRoutes.getLiveRouteID(), MASTER_LIST_INDEX,
                 mCurrentlyActiveChannel);
 
         // 3) When DVB channel is started, Emulator Engine will receive callback and start media
@@ -294,20 +298,19 @@ public class DtvManager {
 
     private boolean startDvb(ChannelDescriptor channel) throws InternalException {
         mLog.d("[startDvb][" + channel.toString() + "]");
-        int route = mRouteManager.getActiveRouteByServiceType(channel.getType());
-        if (route == RouteManager.EC_INVALID_ROUTE) {
+        mCurrentRoutes = mRouteManager.getRouteByServiceType(channel.getType());
+        if ((mCurrentRoutes == null) || (mCurrentRoutes.getLiveRoute() == null)) {
             mLog.e("[startDvb][unknown source type: " + channel.getType() + "]");
             return false;
         }
         mCurrentlyActiveChannel = channel.getServiceId();
-        mRouteManager.updateCurrentLiveRoute(route);
-        mDtvManager.getServiceControl().startService(route, MASTER_LIST_INDEX,
+        mDtvManager.getServiceControl().startService(mCurrentRoutes.getLiveRouteID(), MASTER_LIST_INDEX,
                 mCurrentlyActiveChannel);
         if (ExampleSwitches.ENABLE_SCALE_FEATURE) {
-            mDtvManager.getDisplayControl().scaleWindow(route, 200, 0, 1280, 720);
+            mDtvManager.getDisplayControl().scaleWindow(mCurrentRoutes.getLiveRouteID(), 200, 0, 1280, 720);
         } else {
             mLog.d("[startDvb][set rect: " + mVideoRect + "]");
-            mDtvManager.getDisplayControl().scaleWindow(route,
+            mDtvManager.getDisplayControl().scaleWindow(mCurrentRoutes.getLiveRouteID(),
                     mVideoRect.left, mVideoRect.top,
                     mVideoRect.width(), mVideoRect.height());
         }
@@ -316,17 +319,16 @@ public class DtvManager {
 
     private boolean startIp(ChannelDescriptor channel) throws InternalException {
         mLog.d("[startIp][" + channel.toString() + "]");
-        int route = mRouteManager.getLiveRouteIp();
-        if (route == RouteManager.EC_INVALID_ROUTE) {
+        mCurrentRoutes = mRouteManager.getIpPrimaryRoute();
+        if ((mCurrentRoutes == null) || (mCurrentRoutes.getLiveRoute() == null)) {
             mLog.e("[startIp][unknown source type: " + channel.getType() + "]");
             return false;
         }
-        mRouteManager.updateCurrentLiveRoute(mRouteManager.getLiveRouteIp());
-        mDtvManager.getServiceControl().zapURL(mRouteManager.getLiveRouteIp(), channel.getUrl());
+        mDtvManager.getServiceControl().zapURL(mCurrentRoutes.getLiveRouteID(), channel.getUrl());
         if (ExampleSwitches.ENABLE_SCALE_FEATURE) {
-            mDtvManager.getDisplayControl().scaleWindow(route, 0, 200, 640, 480);
+            mDtvManager.getDisplayControl().scaleWindow(mCurrentRoutes.getLiveRouteID(), 0, 200, 640, 480);
         } else {
-            mDtvManager.getDisplayControl().scaleWindow(route,
+            mDtvManager.getDisplayControl().scaleWindow(mCurrentRoutes.getLiveRouteID(),
                     mVideoRect.left, mVideoRect.top,
                     mVideoRect.width(), mVideoRect.height());
         }
@@ -335,7 +337,7 @@ public class DtvManager {
 
     public int getCurrentServiceIndex() {
         Service service = mDtvManager.getServiceControl().getActiveService(
-                mRouteManager.getCurrentLiveRoute());
+                mCurrentRoutes.getLiveRouteID());
         return service.getServiceIndex();
     }
 
@@ -482,6 +484,15 @@ public class DtvManager {
     }
 
     /**
+     * Gets Current Routes
+     *
+     * @return Routes instance
+     */
+    public Routes getCurrentRoutes() {
+        return mCurrentRoutes;
+    }
+
+    /**
      * Gets Epg Acquisition Manager
      *
      * @return EpgAcquisitionManager instance
@@ -517,7 +528,7 @@ public class DtvManager {
             super();
 
             mWaitCycle = 1000;
-            mWaitCounter = 100;
+            mWaitCounter = 10;
         }
 
         @Override

@@ -293,9 +293,10 @@ public class TvSession extends TvInputService.Session implements IServiceCallbac
                 }
                 try {
                     if (trackId == null) {
-                        mSubtitleManager.hideSubtitles();
+                        mSubtitleManager.hideSubtitles(mDtvManager.getCurrentRoutes().getLiveRouteID());
                     } else {
-                        mSubtitleManager.showSubtitles(mTracksIndices.get(trackId));
+                        mSubtitleManager.showSubtitles(mDtvManager.getCurrentRoutes().getLiveRouteID(),
+                                mTracksIndices.get(trackId));
                     }
                 } catch (InternalException e) {
                     e.printStackTrace();
@@ -310,7 +311,8 @@ public class TvSession extends TvInputService.Session implements IServiceCallbac
                     }
                 }
                 try {
-                    mAudioManager.setAudioTrack(mTracksIndices.get(trackId));
+                    mAudioManager.setAudioTrack(mDtvManager.getCurrentRoutes().getLiveRouteID(),
+                            mTracksIndices.get(trackId));
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -382,13 +384,16 @@ public class TvSession extends TvInputService.Session implements IServiceCallbac
 
         if (mCurrentChannel != null) {
             // Audio tracks
-            int audioTrackCount = mAudioManager.getTrackCount();
+            int audioTrackCount = mAudioManager.getTrackCount(mDtvManager.getCurrentRoutes().getLiveRouteID());
             for (int trackIndex = 0; trackIndex < audioTrackCount; trackIndex++) {
-                AudioTrack audioTrack = mAudioManager.getTrack(trackIndex);
-                String trackId = mTracks.size() + "_" + audioTrack.getName() + "_"
-                        + audioTrack.getLanguage();
-                mTracks.add(new TvTrackInfo.Builder(TvTrackInfo.TYPE_AUDIO, trackId).setLanguage(
-                        audioTrack.getLanguage()).build());
+                AudioTrack audioTrack = mAudioManager.getTrack(mDtvManager.getCurrentRoutes().getLiveRouteID(),
+                        trackIndex);
+                String trackId = mTracks.size()
+                        + "_" + audioTrack.getName()
+                        + "_" + audioTrack.getLanguage();
+                mTracks.add(new TvTrackInfo.Builder(TvTrackInfo.TYPE_AUDIO, trackId)
+                        .setLanguage(audioTrack.getLanguage())
+                        .build());
                 mTracksIndices.put(trackId, audioTrack.getIndex());
                 if (firstAudioTrack == null) {
                     firstAudioTrack = trackId;
@@ -396,13 +401,16 @@ public class TvSession extends TvInputService.Session implements IServiceCallbac
                 trackIndex++;
             }
             // Subtitle tracks
-            int subtitlesTrackCount = mSubtitleManager.getTrackCount();
+            int subtitlesTrackCount = mSubtitleManager.getTrackCount(mDtvManager.getCurrentRoutes().getLiveRouteID());
             for (int trackIndex = 0; trackIndex < subtitlesTrackCount; trackIndex++) {
-                SubtitleTrack subtitleTrack = mSubtitleManager.getTrack(trackIndex);
-                String trackId = mTracks.size() + "_" + subtitleTrack.getName() + "_"
-                        + subtitleTrack.getLanguage();
+                SubtitleTrack subtitleTrack = mSubtitleManager.getTrack(mDtvManager.getCurrentRoutes().getLiveRouteID(),
+                        trackIndex);
+                String trackId = mTracks.size()
+                        + "_" + subtitleTrack.getName()
+                        + "_" + subtitleTrack.getLanguage();
                 mTracks.add(new TvTrackInfo.Builder(TvTrackInfo.TYPE_SUBTITLE, trackId)
-                        .setLanguage(subtitleTrack.getLanguage()).build());
+                        .setLanguage(subtitleTrack.getLanguage())
+                        .build());
                 mTracksIndices.put(trackId, subtitleTrack.getIndex());
                 trackIndex++;
             }
